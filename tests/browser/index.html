@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>csv-browser-stream Test Page</title>
+</head>
+<body>
+  <h1>csv-browser-stream Test Page</h1>
+  <div id="results"></div>
+  <script type="module">
+    import * as csvBrowserStream from '/dist/index.js';
+
+    // Expose the module to the window for Playwright to access
+    window.csvBrowserStream = csvBrowserStream;
+    window.testReady = true;
+
+    // Signal that the module is loaded
+    window.dispatchEvent(new Event('csv-module-loaded'));
+  </script>
+</body>
+</html>
