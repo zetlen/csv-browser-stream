@@ -10,6 +10,10 @@ export interface CSVStreamOptions {
   headers?: string[];
   /** AbortSignal to cancel streaming. */
   signal?: AbortSignal;
+  /** Total bytes for progress reporting (automatically set for File/Blob inputs) */
+  totalBytes?: number;
+  /** Emit progress events every N rows. Default: 1000. Set to 0 to disable. */
+  progressInterval?: number;
 }
 
 /**
@@ -71,6 +75,7 @@ export interface CSVStreamEventMap {
   headers: CSVHeadersEvent;
   error: CSVErrorEvent;
   end: CSVEndEvent;
+  progress: CSVProgressEvent;
 }
 
 /**
@@ -180,6 +185,24 @@ export interface ValidateProgress {
   rowCount: number;
   invalidRowCount: number;
   lineNum: number;
+  /** Bytes processed so far (if available) */
+  bytesProcessed?: number;
+  /** Total bytes (if known, e.g., from file size) */
+  totalBytes?: number;
 }
 
 export type ValidateProgressCallback = (progress: ValidateProgress) => void;
+
+/**
+ * Progress event data emitted during streaming.
+ */
+export interface CSVProgressEvent {
+  /** Bytes processed so far */
+  bytesProcessed: number;
+  /** Total bytes if known */
+  totalBytes?: number;
+  /** Current line number */
+  lineNum: number;
+  /** Current row number (data rows only) */
+  rowNum: number;
+}

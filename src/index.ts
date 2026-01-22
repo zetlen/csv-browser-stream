@@ -1,6 +1,14 @@
 // Main entry point for csv-browser-stream
 
 export { normalizeHeader, parseCsvLine } from './parser.ts';
+export type {
+  ColumnSchema,
+  CSVSchema,
+  SchemaValidateOptions,
+  SimpleSchema,
+} from './schema.ts';
+// Schema-based validation
+export { createValidator, validateSchema } from './schema.ts';
 export { CSVStream, streamCSV } from './stream.ts';
 // Re-export types
 export type {
@@ -8,6 +16,7 @@ export type {
   CSVErrorEvent,
   CSVHeadersEvent,
   CSVInput,
+  CSVProgressEvent,
   CSVRow,
   CSVRowEvent,
   CSVStreamEventMap,
@@ -23,3 +32,21 @@ export type {
   ValidateRowData,
 } from './types.ts';
 export { validate } from './validate.ts';
+export type { FieldValidator } from './validators.ts';
+// Validators
+export {
+  all,
+  boolean,
+  custom,
+  date,
+  email,
+  length,
+  number,
+  oneOf,
+  pattern,
+  required,
+  url,
+} from './validators.ts';
+export type { CSVWriterOptions } from './writer.ts';
+// CSV Writer
+export { createCSVWriteStream, downloadCSV, toCSV, toCSVBlob } from './writer.ts';

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { CSVStream, streamCSV } from '../src/stream.ts';
-import type { CSVEndEvent, CSVHeadersEvent, CSVRowEvent } from '../src/types.ts';
+import type { CSVEndEvent, CSVHeadersEvent, CSVProgressEvent, CSVRowEvent } from '../src/types.ts';
 
 // Helper to pipe string content through CSVStream and collect results
 async function processCSV(
@@ -279,5 +279,208 @@ describe('streamCSV', () => {
     }
 
     expect(stream.headers).toEqual(['name', 'age']);
+  });
+
+  test('auto-detects total bytes from Blob', async () => {
+    const csv = 'name,age\nAlice,30';
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const stream = await streamCSV(blob, { hasHeaders: true });
+
+    expect(stream.totalBytes).toBe(blob.size);
+
+    // Consume stream
+    const reader = stream.readable.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+  });
+
+  test('tracks bytes processed', async () => {
+    const csv = 'name,age\nAlice,30';
+    const stream = await streamCSV(csv, { hasHeaders: true });
+
+    // Consume stream
+    const reader = stream.readable.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    expect(stream.bytesProcessed).toBeGreaterThan(0);
+  });
+});
+
+describe('multiline quoted fields', () => {
+  test('parses field with embedded newline', async () => {
+    const csv = 'name,address\nAlice,"123 Main St\nApt 4"';
+    const stream = await streamCSV(csv, { hasHeaders: true });
+    const rows: CSVRowEvent[] = [];
+
+    stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
+      rows.push(event.detail);
+    });
+
+    const reader = stream.readable.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fields).toEqual({
+      name: 'Alice',
+      address: '123 Main St\nApt 4',
+    });
+  });
+
+  test('parses multiple rows with multiline fields', async () => {
+    const csv = 'name,note\nAlice,"Line 1\nLine 2"\nBob,"Single line"';
+    const stream = await streamCSV(csv, { hasHeaders: true });
+    const rows: CSVRowEvent[] = [];
+
+    stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
+      rows.push(event.detail);
+    });
+
+    const reader = stream.readable.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.fields).toEqual({ name: 'Alice', note: 'Line 1\nLine 2' });
+    expect(rows[1]!.fields).toEqual({ name: 'Bob', note: 'Single line' });
+  });
+
+  test('handles multiline field with quotes inside', async () => {
+    const csv = 'name,bio\nAlice,"She said ""hello""\nand left"';
+    const stream = await streamCSV(csv, { hasHeaders: true });
+    const rows: CSVRowEvent[] = [];
+
+    stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
+      rows.push(event.detail);
+    });
+
+    const reader = stream.readable.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fields).toEqual({
+      name: 'Alice',
+      bio: 'She said "hello"\nand left',
+    });
+  });
+
+  test('handles multiline field split across chunks', async () => {
+    const rows: CSVRowEvent[] = [];
+    const stream = new CSVStream({ hasHeaders: true });
+
+    stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
+      rows.push(event.detail);
+    });
+
+    // Split the multiline field across chunks
+    const chunks = ['name,note\nAlice,"Line 1', '\nLine 2"\nBob,Simple'];
+    const source = new ReadableStream<string>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(chunk);
+        }
+        controller.close();
+      },
+    });
+
+    const pipePromise = source.pipeTo(stream.writable);
+    const consumePromise = (async () => {
+      const reader = stream.readable.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    })();
+
+    await Promise.all([pipePromise, consumePromise]);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.fields).toEqual({ name: 'Alice', note: 'Line 1\nLine 2' });
+    expect(rows[1]!.fields).toEqual({ name: 'Bob', note: 'Simple' });
+  });
+});
+
+describe('progress events', () => {
+  test('emits progress events at intervals', async () => {
+    // Create a CSV with more rows than the default interval
+    const headerRow = 'id,name';
+    const dataRows = Array.from({ length: 2500 }, (_, i) => `${i},Name${i}`);
+    const csv = [headerRow, ...dataRows].join('\n');
+
+    const progressEvents: CSVProgressEvent[] = [];
+    const stream = await streamCSV(csv, { hasHeaders: true, progressInterval: 1000 });
+
+    stream.on('progress', (event: CustomEvent<CSVProgressEvent>) => {
+      progressEvents.push(event.detail);
+    });
+
+    const reader = stream.readable.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    // Should have at least 2 progress events (at 1000 and 2000 rows)
+    expect(progressEvents.length).toBeGreaterThanOrEqual(2);
+    expect(progressEvents[0]!.rowNum).toBe(1000);
+    expect(progressEvents[1]!.rowNum).toBe(2000);
+    expect(progressEvents[0]!.bytesProcessed).toBeGreaterThan(0);
+  });
+
+  test('respects custom progress interval', async () => {
+    const headerRow = 'id,name';
+    const dataRows = Array.from({ length: 50 }, (_, i) => `${i},Name${i}`);
+    const csv = [headerRow, ...dataRows].join('\n');
+
+    const progressEvents: CSVProgressEvent[] = [];
+    const stream = await streamCSV(csv, { hasHeaders: true, progressInterval: 10 });
+
+    stream.on('progress', (event: CustomEvent<CSVProgressEvent>) => {
+      progressEvents.push(event.detail);
+    });
+
+    const reader = stream.readable.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    // Should have at least 4 progress events (at 10, 20, 30, 40 rows)
+    expect(progressEvents.length).toBeGreaterThanOrEqual(4);
+    expect(progressEvents[0]!.rowNum).toBe(10);
+    expect(progressEvents[1]!.rowNum).toBe(20);
+  });
+
+  test('disables progress events when interval is 0', async () => {
+    const headerRow = 'id,name';
+    const dataRows = Array.from({ length: 100 }, (_, i) => `${i},Name${i}`);
+    const csv = [headerRow, ...dataRows].join('\n');
+
+    const progressEvents: CSVProgressEvent[] = [];
+    const stream = await streamCSV(csv, { hasHeaders: true, progressInterval: 0 });
+
+    stream.on('progress', (event: CustomEvent<CSVProgressEvent>) => {
+      progressEvents.push(event.detail);
+    });
+
+    const reader = stream.readable.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    expect(progressEvents).toHaveLength(0);
   });
 });

@@ -44,6 +44,7 @@ describe('validate', () => {
 
     await validate(csv, {}, (data) => {
       callbackData.push({ ...data });
+      return undefined;
     });
 
     expect(callbackData).toHaveLength(3);
@@ -135,6 +136,7 @@ describe('validate', () => {
 
     const result = await validate(csv, { hasHeaders: false }, (data) => {
       rows.push({ ...data });
+      return undefined;
     });
 
     expect(result.valid).toBe(true);
@@ -148,6 +150,7 @@ describe('validate', () => {
 
     const result = await validate(csv, { headers: ['firstName', 'yearsOld'] }, (data) => {
       rows.push({ ...data });
+      return undefined;
     });
 
     expect(result.valid).toBe(true);
@@ -221,11 +224,12 @@ describe('validate', () => {
     expect(result.rowCount).toBe(1);
   });
 
-  test('row callback returning void is treated as valid', async () => {
+  test('row callback returning undefined is treated as valid', async () => {
     const csv = 'name,age\nAlice,30';
 
     const result = await validate(csv, {}, () => {
-      // Return nothing - should be treated as valid
+      // Return undefined - should be treated as valid
+      return undefined;
     });
 
     expect(result.valid).toBe(true);

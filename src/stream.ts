@@ -4,6 +4,7 @@ import type {
   CSVErrorEvent,
   CSVHeadersEvent,
   CSVInput,
+  CSVProgressEvent,
   CSVRow,
   CSVRowEvent,
   CSVStreamEventMap,
@@ -26,7 +27,12 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
   private _lineNum = 0;
   private _rowNum = 0;
   private _buffer = '';
-  private _options: Required<Pick<CSVStreamOptions, 'delimiter' | 'hasHeaders'>> & CSVStreamOptions;
+  private _bytesProcessed = 0;
+  private _lastProgressRow = 0;
+  private _options: Required<
+    Pick<CSVStreamOptions, 'delimiter' | 'hasHeaders' | 'progressInterval'>
+  > &
+    CSVStreamOptions;
   private _aborted = false;
 
   constructor(options: CSVStreamOptions = {}) {
@@ -37,6 +43,8 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
       hasHeaders: options.hasHeaders ?? true,
       headers: options.headers,
       signal: options.signal,
+      totalBytes: options.totalBytes,
+      progressInterval: options.progressInterval ?? 1000,
     };
 
     if (options.headers) {
@@ -70,6 +78,14 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
     return this._rowNum;
   }
 
+  get bytesProcessed(): number {
+    return this._bytesProcessed;
+  }
+
+  get totalBytes(): number | undefined {
+    return this._options.totalBytes;
+  }
+
   /**
    * Add typed event listener.
    */
@@ -98,8 +114,25 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
     this.dispatchEvent(new CustomEvent(type, { detail }));
   }
 
+  private _maybeEmitProgress(): void {
+    const interval = this._options.progressInterval;
+    if (interval === 0) return;
+
+    if (this._rowNum - this._lastProgressRow >= interval) {
+      this._lastProgressRow = this._rowNum;
+      this._emit('progress', {
+        bytesProcessed: this._bytesProcessed,
+        totalBytes: this._options.totalBytes,
+        lineNum: this._lineNum,
+        rowNum: this._rowNum,
+      } satisfies CSVProgressEvent);
+    }
+  }
+
   private _transform(chunk: string, controller: TransformStreamDefaultController<CSVRow>): void {
     if (this._aborted) return;
+    // Track bytes (approximate for string chunks - accurate for UTF-8 ASCII)
+    this._bytesProcessed += new TextEncoder().encode(chunk).length;
     this._buffer += chunk;
     this._processBuffer(controller);
   }
@@ -120,14 +153,31 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
   }
 
   private _processBuffer(controller: TransformStreamDefaultController<CSVRow>): void {
-    const lines = this._buffer.split('\n');
-    // Keep the last incomplete line in buffer
-    this._buffer = lines.pop() ?? '';
+    // Process buffer character by character to handle multiline quoted fields
+    let lineStart = 0;
+    let inQuotes = false;
 
-    for (const line of lines) {
-      if (this._aborted) return;
-      this._processLine(line, controller);
+    for (let i = 0; i < this._buffer.length; i++) {
+      const char = this._buffer[i];
+
+      if (char === '"') {
+        // Check for escaped quote (doubled)
+        if (inQuotes && this._buffer[i + 1] === '"') {
+          i++; // Skip the escaped quote
+          continue;
+        }
+        inQuotes = !inQuotes;
+      } else if (char === '\n' && !inQuotes) {
+        // Found end of line outside quotes
+        const line = this._buffer.slice(lineStart, i);
+        if (this._aborted) return;
+        this._processLine(line, controller);
+        lineStart = i + 1;
+      }
     }
+
+    // Keep any remaining data (incomplete line or inside quotes) in buffer
+    this._buffer = this._buffer.slice(lineStart);
   }
 
   private _processLine(
@@ -186,6 +236,9 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
       fields: row,
       raw: line,
     } satisfies CSVRowEvent);
+
+    // Maybe emit progress
+    this._maybeEmitProgress();
 
     // Enqueue to the transform stream
     controller.enqueue(row);
@@ -308,7 +361,25 @@ export async function streamCSV(
   input: CSVInput,
   options: CSVStreamOptions = {},
 ): Promise<CSVStream> {
-  const csvStream = new CSVStream(options);
+  // Auto-detect total bytes for progress reporting
+  let totalBytes = options.totalBytes;
+  if (totalBytes === undefined) {
+    if (input instanceof Blob) {
+      totalBytes = input.size;
+    } else if (typeof HTMLInputElement !== 'undefined' && input instanceof HTMLInputElement) {
+      const file = input.files?.[0];
+      if (file) {
+        totalBytes = file.size;
+      }
+    } else if (input instanceof Response) {
+      const contentLength = input.headers.get('content-length');
+      if (contentLength) {
+        totalBytes = Number.parseInt(contentLength, 10);
+      }
+    }
+  }
+
+  const csvStream = new CSVStream({ ...options, totalBytes });
   const textStream = await getTextStream(input);
 
   // Pipe the text stream through the CSV stream (fire and forget)
