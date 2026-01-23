@@ -86,9 +86,6 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
     return this._options.totalBytes;
   }
 
-  /**
-   * Add typed event listener.
-   */
   on<T extends keyof CSVStreamEventMap>(
     type: T,
     listener: CSVStreamEventHandler<T>,
@@ -98,9 +95,6 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
     return this;
   }
 
-  /**
-   * Remove typed event listener.
-   */
   off<T extends keyof CSVStreamEventMap>(
     type: T,
     listener: CSVStreamEventHandler<T>,
@@ -131,7 +125,6 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
 
   private _transform(chunk: string, controller: TransformStreamDefaultController<CSVRow>): void {
     if (this._aborted) return;
-    // Track bytes (approximate for string chunks - accurate for UTF-8 ASCII)
     this._bytesProcessed += new TextEncoder().encode(chunk).length;
     this._buffer += chunk;
     this._processBuffer(controller);
@@ -140,7 +133,6 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
   private _flush(controller: TransformStreamDefaultController<CSVRow>): void {
     if (this._aborted) return;
 
-    // Process any remaining data in buffer
     if (this._buffer.length > 0) {
       this._processLine(this._buffer, controller);
       this._buffer = '';
@@ -153,7 +145,6 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
   }
 
   private _processBuffer(controller: TransformStreamDefaultController<CSVRow>): void {
-    // Process buffer character by character to handle multiline quoted fields
     let lineStart = 0;
     let inQuotes = false;
 
@@ -161,14 +152,12 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
       const char = this._buffer[i];
 
       if (char === '"') {
-        // Check for escaped quote (doubled)
         if (inQuotes && this._buffer[i + 1] === '"') {
-          i++; // Skip the escaped quote
+          i++;
           continue;
         }
         inQuotes = !inQuotes;
       } else if (char === '\n' && !inQuotes) {
-        // Found end of line outside quotes
         const line = this._buffer.slice(lineStart, i);
         if (this._aborted) return;
         this._processLine(line, controller);
@@ -176,7 +165,6 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
       }
     }
 
-    // Keep any remaining data (incomplete line or inside quotes) in buffer
     this._buffer = this._buffer.slice(lineStart);
   }
 
@@ -187,10 +175,7 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
     this._lineNum += 1;
     const line = rawLine.replace(/\r$/, '');
 
-    // Skip empty lines
-    if (line.trim() === '') {
-      return;
-    }
+    if (line.trim() === '') return;
 
     const parsed = parseCsvLine(line, this._options.delimiter);
 
@@ -206,7 +191,6 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
 
     const fields = parsed.fields;
 
-    // Handle headers
     if (!this._headers && this._options.hasHeaders) {
       this._headers = fields.map((f, i) => (i === 0 ? normalizeHeader(f) : f.trim()));
       this._emit('headers', {
@@ -218,7 +202,6 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
 
     this._rowNum += 1;
 
-    // Convert to object if we have headers
     let row: CSVRow;
     if (this._headers) {
       const obj: Record<string, string> = {};
@@ -230,26 +213,18 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
       row = fields;
     }
 
-    // Emit row event
     this._emit('csvrow', {
       rowNum: this._rowNum,
       fields: row,
       raw: line,
     } satisfies CSVRowEvent);
 
-    // Maybe emit progress
     this._maybeEmitProgress();
-
-    // Enqueue to the transform stream
     controller.enqueue(row);
   }
 }
 
-/**
- * Extracts a text ReadableStream from various input types.
- */
-async function getTextStream(input: CSVInput): Promise<ReadableStream<string>> {
-  // String input - create stream from string
+function toTextStream(input: CSVInput): ReadableStream<string> {
   if (typeof input === 'string') {
     return new ReadableStream<string>({
       start(controller) {
@@ -259,133 +234,37 @@ async function getTextStream(input: CSVInput): Promise<ReadableStream<string>> {
     });
   }
 
-  // File or Blob
   if (input instanceof Blob) {
-    const byteStream = input.stream();
-    return byteStream.pipeThrough(new TextDecoderStream());
+    return input.stream().pipeThrough(new TextDecoderStream());
   }
 
-  // Response object
   if (input instanceof Response) {
-    if (!input.body) {
-      throw new Error('Response has no body');
-    }
+    if (!input.body) throw new Error('Response has no body');
     return input.body.pipeThrough(new TextDecoderStream());
   }
 
-  // HTMLInputElement - get file from input
-  if (typeof HTMLInputElement !== 'undefined' && input instanceof HTMLInputElement) {
-    if (input.type !== 'file') {
-      throw new Error('HTMLInputElement must be of type "file"');
-    }
-    const file = input.files?.[0];
-    if (!file) {
-      throw new Error('No file selected');
-    }
-    return file.stream().pipeThrough(new TextDecoderStream());
-  }
-
-  // ReadableStream - could be bytes or strings
-  if (input instanceof ReadableStream) {
-    // Try to detect if it's a byte stream or text stream
-    // We'll wrap it to handle both cases
-    const reader = input.getReader();
-    const { value, done } = await reader.read();
-    reader.releaseLock();
-
-    if (done) {
-      return new ReadableStream<string>({
-        start(controller) {
-          controller.close();
-        },
-      });
-    }
-
-    // If value is a Uint8Array, pipe through TextDecoderStream
-    if (value instanceof Uint8Array) {
-      // Create a new stream that first yields the read chunk, then the rest
-      const restStream = input as ReadableStream<Uint8Array>;
-      const combinedStream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          controller.enqueue(value);
-          const reader = restStream.getReader();
-          try {
-            while (true) {
-              const { value: chunk, done } = await reader.read();
-              if (done) break;
-              controller.enqueue(chunk);
-            }
-            controller.close();
-          } catch (e) {
-            controller.error(e);
-          }
-        },
-      });
-      return combinedStream.pipeThrough(
-        new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>,
-      );
-    }
-
-    // It's a string stream
-    if (typeof value === 'string') {
-      const restStream = input as ReadableStream<string>;
-      return new ReadableStream<string>({
-        async start(controller) {
-          controller.enqueue(value);
-          const reader = restStream.getReader();
-          try {
-            while (true) {
-              const { value: chunk, done } = await reader.read();
-              if (done) break;
-              controller.enqueue(chunk);
-            }
-            controller.close();
-          } catch (e) {
-            controller.error(e);
-          }
-        },
-      });
-    }
-
-    throw new Error('Unsupported ReadableStream content type');
-  }
-
-  throw new Error('Unsupported input type');
+  // ReadableStream<string> - pass through directly
+  return input;
 }
 
 /**
  * Creates a CSVStream from various input types.
- * Returns the CSVStream which can be used for event listening and streaming.
  */
-export async function streamCSV(
-  input: CSVInput,
-  options: CSVStreamOptions = {},
-): Promise<CSVStream> {
-  // Auto-detect total bytes for progress reporting
+export function streamCSV(input: CSVInput, options: CSVStreamOptions = {}): CSVStream {
   let totalBytes = options.totalBytes;
   if (totalBytes === undefined) {
     if (input instanceof Blob) {
       totalBytes = input.size;
-    } else if (typeof HTMLInputElement !== 'undefined' && input instanceof HTMLInputElement) {
-      const file = input.files?.[0];
-      if (file) {
-        totalBytes = file.size;
-      }
     } else if (input instanceof Response) {
       const contentLength = input.headers.get('content-length');
-      if (contentLength) {
-        totalBytes = Number.parseInt(contentLength, 10);
-      }
+      if (contentLength) totalBytes = Number.parseInt(contentLength, 10);
     }
   }
 
   const csvStream = new CSVStream({ ...options, totalBytes });
-  const textStream = await getTextStream(input);
-
-  // Pipe the text stream through the CSV stream (fire and forget)
-  textStream.pipeTo(csvStream.writable).catch(() => {
-    // Error handling is done via events
-  });
+  toTextStream(input)
+    .pipeTo(csvStream.writable)
+    .catch(() => {});
 
   return csvStream;
 }

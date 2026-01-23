@@ -120,76 +120,6 @@ export function toCSV(data: CSVWriteRow[], options: CSVWriterOptions = {}): stri
 }
 
 /**
- * Creates a TransformStream that converts objects/arrays to CSV lines.
- *
- * @param options - Writer options
- * @returns TransformStream that accepts rows and outputs CSV strings
- *
- * @example
- * ```ts
- * const stream = createCSVWriteStream({ headers: ['name', 'age'] });
- *
- * const writer = stream.writable.getWriter();
- * await writer.write({ name: 'Alice', age: 30 });
- * await writer.write({ name: 'Bob', age: 25 });
- * await writer.close();
- *
- * // Read from stream.readable
- * ```
- */
-export function createCSVWriteStream(
-  options: CSVWriterOptions = {},
-): TransformStream<CSVWriteRow, string> {
-  const delimiter = options.delimiter ?? ',';
-  const lineEnding = options.lineEnding ?? '\r\n';
-  const quoteAll = options.quoteAll ?? false;
-  const includeHeaders = options.includeHeaders ?? true;
-
-  let headers = options.headers;
-  let headersSent = false;
-
-  return new TransformStream<CSVWriteRow, string>({
-    transform(row, controller) {
-      // Determine headers from first object row
-      if (!headers && !Array.isArray(row)) {
-        headers = Object.keys(row);
-      }
-
-      // Send headers first
-      if (includeHeaders && headers && !headersSent) {
-        const headerLine = headers.map((h) => escapeField(h, delimiter, quoteAll)).join(delimiter);
-        controller.enqueue(headerLine + lineEnding);
-        headersSent = true;
-      }
-
-      // Send data row
-      const line = rowToLine(row, headers, delimiter, quoteAll);
-      controller.enqueue(line + lineEnding);
-    },
-  });
-}
-
-/**
- * Creates a Blob containing CSV data.
- * Useful for downloads or file operations.
- *
- * @param data - Array of rows
- * @param options - Writer options
- * @returns Blob with CSV content and text/csv MIME type
- *
- * @example
- * ```ts
- * const blob = toCSVBlob(data);
- * const url = URL.createObjectURL(blob);
- * // Use url for download link
- * ```
- */
-export function toCSVBlob(data: CSVWriteRow[], options: CSVWriterOptions = {}): Blob {
-  const csv = toCSV(data, options);
-  return new Blob([csv], { type: 'text/csv;charset=utf-8' });
-}
-
-/**
  * Triggers a download of CSV data in the browser.
  *
  * @param data - Array of rows
@@ -206,7 +136,8 @@ export function downloadCSV(
   filename: string,
   options: CSVWriterOptions = {},
 ): void {
-  const blob = toCSVBlob(data, options);
+  const csv = toCSV(data, options);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
 
   const link = document.createElement('a');

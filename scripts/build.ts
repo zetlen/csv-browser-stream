@@ -31,13 +31,12 @@ async function build() {
   await $`cp ./dist/validate.d.ts ./dist/cjs/validate.d.cts 2>/dev/null || true`;
   await $`cp ./dist/validators.d.ts ./dist/cjs/validators.d.cts 2>/dev/null || true`;
   await $`cp ./dist/schema.d.ts ./dist/cjs/schema.d.cts 2>/dev/null || true`;
+  await $`cp ./dist/writer.d.ts ./dist/cjs/writer.d.cts 2>/dev/null || true`;
 
-  // Report bundle sizes
-  console.log('\n📊 Bundle sizes:');
-  const esmStat = Bun.file('./dist/index.js');
-  const cjsStat = Bun.file('./dist/cjs/index.cjs');
-  console.log(`   ESM: ${(esmStat.size / 1024).toFixed(2)} KB (minified)`);
-  console.log(`   CJS: ${(cjsStat.size / 1024).toFixed(2)} KB (minified)`);
+  // Report bundle size
+  console.log('\n📊 Bundle size:');
+  const esm = Bun.file('./dist/index.js');
+  console.log(`   ${(esm.size / 1024).toFixed(2)} KB`);
 
   console.log('\n✅ Build complete!');
 }

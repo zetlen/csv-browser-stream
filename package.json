@@ -16,10 +16,6 @@
         "types": "./dist/cjs/index.d.cts",
         "default": "./dist/cjs/index.cjs"
       }
-    },
-    "./cjs": {
-      "types": "./dist/cjs/index.d.cts",
-      "default": "./dist/cjs/index.cjs"
     }
   },
   "files": [

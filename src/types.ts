@@ -100,14 +100,7 @@ export type ParseResult =
 /**
  * Supported input types for streamCSV().
  */
-export type CSVInput =
-  | string
-  | File
-  | Blob
-  | ReadableStream<Uint8Array>
-  | ReadableStream<string>
-  | Response
-  | HTMLInputElement;
+export type CSVInput = string | Blob | Response | ReadableStream<string>;
 
 /**
  * Options for the validate() convenience function.
