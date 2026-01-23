@@ -210,12 +210,17 @@ normalizeHeader('\uFEFF  Name  '); // 'Name'
 Validate CSV data against a declarative schema with built-in validators.
 
 ```typescript
-import { validateSchema, required, email, number } from 'csv-browser-stream';
+import { validateSchema, number, pattern } from 'csv-browser-stream';
+
+// Custom validators are just functions
+const required = (value, field) => value.trim() === '' ? `${field} is required` : undefined;
+const email = (value, field) => value && !value.includes('@') ? `${field} must be valid` : undefined;
 
 const schema = {
-  name: [required()],
-  email: [required(), email()],
-  age: [number({ min: 0, max: 150 })]
+  name: [required],
+  email: [required, email],
+  age: [number({ min: 0, max: 150 })],
+  code: [pattern(/^[A-Z]{3}-\d+$/)]
 };
 
 const result = await validateSchema(file, schema);
@@ -225,17 +230,12 @@ const result = await validateSchema(file, schema);
 
 | Validator | Description | Example |
 |-----------|-------------|---------|
-| `required(msg?)` | Field must not be empty | `required('Name is required')` |
 | `number(opts?)` | Must be a valid number | `number({ min: 0, max: 100, integer: true })` |
-| `email(msg?)` | Must be valid email format | `email()` |
-| `url(msg?)` | Must be valid URL | `url()` |
 | `pattern(regex, msg?)` | Must match regex | `pattern(/^[A-Z]{3}-\d{4}$/)` |
-| `length(opts)` | String length constraints | `length({ min: 3, max: 20 })` |
-| `oneOf(values, opts?)` | Must be one of allowed values | `oneOf(['active', 'inactive'])` |
 | `date(opts?)` | Must be valid date | `date({ format: 'us', before: new Date() })` |
 | `boolean(msg?)` | Must be boolean-like | `boolean()` |
-| `custom(fn)` | Custom validation function | `custom((v) => v.startsWith('SKU-') ? undefined : 'Invalid')` |
-| `all(...validators)` | Combine multiple validators | `all(required(), email())` |
+
+For more complex validation (required fields, email, etc.), pass a custom validator callback:
 
 ### `toCSV(data, options?)`
 
@@ -385,12 +385,17 @@ stream.on('csvrow', (e) => {
 ### Schema validation with reusable validator
 
 ```typescript
-import { createValidator, required, email, number, oneOf } from 'csv-browser-stream';
+import { createValidator, number, pattern } from 'csv-browser-stream';
+
+// Custom validators
+const required = (v, f) => v.trim() === '' ? `${f} is required` : undefined;
+const email = (v, f) => v && !v.includes('@') ? `Invalid ${f}` : undefined;
+const oneOf = (values) => (v, f) => v && !values.includes(v) ? `${f} must be one of: ${values}` : undefined;
 
 // Create a reusable validator
 const validateUsers = createValidator({
-  id: [required(), number({ integer: true })],
-  email: [required(), email()],
+  id: [required, number({ integer: true })],
+  email: [required, email],
   role: [oneOf(['admin', 'user', 'guest'])],
   age: [number({ min: 0, max: 150 })]
 });

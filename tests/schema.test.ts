@@ -1,6 +1,24 @@
 import { describe, expect, test } from 'bun:test';
 import { createValidator, validateSchema } from '../src/schema.ts';
-import { email, number, required } from '../src/validators.ts';
+import type { FieldValidator } from '../src/validators.ts';
+import { number, pattern } from '../src/validators.ts';
+
+// Simple required validator for tests
+const required =
+  (msg?: string): FieldValidator =>
+  (value, fieldName) => {
+    if (value.trim() === '') return msg ?? `${fieldName} is required`;
+    return undefined;
+  };
+
+// Simple email validator for tests
+const email =
+  (msg?: string): FieldValidator =>
+  (value, fieldName) => {
+    if (value.trim() === '') return undefined;
+    if (!value.includes('@')) return msg ?? `${fieldName} must be a valid email`;
+    return undefined;
+  };
 
 describe('schema validation', () => {
   describe('validateSchema', () => {
@@ -32,7 +50,7 @@ describe('schema validation', () => {
       expect(result.valid).toBe(false);
       expect(result.invalidRowCount).toBe(1);
       expect(result.invalidRows[0]!.errors).toContain('name is required');
-      expect(result.invalidRows[0]!.errors).toContain('email must be a valid email address');
+      expect(result.invalidRows[0]!.errors).toContain('email must be a valid email');
       expect(result.invalidRows[0]!.errors).toContain('age must be at least 0');
     });
 
@@ -107,7 +125,7 @@ describe('schema validation', () => {
     });
 
     test('respects maxInvalidRows option', async () => {
-      // CSV with actual data rows that fail validation (comma makes it non-empty)
+      // CSV with actual data rows that fail validation
       const csv = 'name,value\n,1\n,2\n,3\n,4\n,5';
       const schema = {
         name: [required()],
@@ -133,6 +151,20 @@ describe('schema validation', () => {
       const result = await validateSchema(csv, schema);
 
       expect(result.valid).toBe(true);
+    });
+
+    test('works with pattern validator', async () => {
+      const csv = 'code,name\nABC-1234,Widget\nINVALID,Gadget';
+      const schema = {
+        code: [pattern(/^[A-Z]{3}-\d{4}$/)],
+        name: [],
+      };
+
+      const result = await validateSchema(csv, schema);
+
+      expect(result.valid).toBe(false);
+      expect(result.invalidRowCount).toBe(1);
+      expect(result.invalidRows[0]!.errors[0]).toContain('does not match');
     });
   });
 

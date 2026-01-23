@@ -1,41 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  all,
-  boolean,
-  custom,
-  date,
-  email,
-  length,
-  number,
-  oneOf,
-  pattern,
-  required,
-  url,
-} from '../src/validators.ts';
+import { boolean, date, number, pattern } from '../src/validators.ts';
 
 describe('validators', () => {
-  describe('required', () => {
-    test('returns error for empty string', () => {
-      const validator = required();
-      expect(validator('', 'name')).toBe('name is required');
-    });
-
-    test('returns error for whitespace-only string', () => {
-      const validator = required();
-      expect(validator('   ', 'name')).toBe('name is required');
-    });
-
-    test('returns undefined for non-empty string', () => {
-      const validator = required();
-      expect(validator('Alice', 'name')).toBeUndefined();
-    });
-
-    test('uses custom message', () => {
-      const validator = required('Please provide a name');
-      expect(validator('', 'name')).toBe('Please provide a name');
-    });
-  });
-
   describe('number', () => {
     test('returns undefined for valid numbers', () => {
       const validator = number();
@@ -100,84 +66,6 @@ describe('validators', () => {
     });
   });
 
-  describe('email', () => {
-    test('validates email format', () => {
-      const validator = email();
-      expect(validator('test@example.com', 'email')).toBeUndefined();
-      expect(validator('user.name@domain.co.uk', 'email')).toBeUndefined();
-      expect(validator('invalid', 'email')).toBe('email must be a valid email address');
-      expect(validator('missing@', 'email')).toBe('email must be a valid email address');
-      expect(validator('@domain.com', 'email')).toBe('email must be a valid email address');
-    });
-
-    test('returns undefined for empty strings', () => {
-      const validator = email();
-      expect(validator('', 'email')).toBeUndefined();
-    });
-  });
-
-  describe('url', () => {
-    test('validates URL format', () => {
-      const validator = url();
-      expect(validator('https://example.com', 'website')).toBeUndefined();
-      expect(validator('http://localhost:3000/path', 'website')).toBeUndefined();
-      expect(validator('not-a-url', 'website')).toBe('website must be a valid URL');
-    });
-
-    test('returns undefined for empty strings', () => {
-      const validator = url();
-      expect(validator('', 'website')).toBeUndefined();
-    });
-  });
-
-  describe('length', () => {
-    test('validates minimum length', () => {
-      const validator = length({ min: 3 });
-      expect(validator('ab', 'username')).toBe('username must be at least 3 characters');
-      expect(validator('abc', 'username')).toBeUndefined();
-      expect(validator('abcd', 'username')).toBeUndefined();
-    });
-
-    test('validates maximum length', () => {
-      const validator = length({ max: 5 });
-      expect(validator('abcdef', 'username')).toBe('username must be at most 5 characters');
-      expect(validator('abcde', 'username')).toBeUndefined();
-    });
-
-    test('validates exact length', () => {
-      const validator = length({ exact: 4 });
-      expect(validator('abc', 'code')).toBe('code must be exactly 4 characters');
-      expect(validator('abcde', 'code')).toBe('code must be exactly 4 characters');
-      expect(validator('abcd', 'code')).toBeUndefined();
-    });
-  });
-
-  describe('oneOf', () => {
-    test('validates against allowed values', () => {
-      const validator = oneOf(['red', 'green', 'blue']);
-      expect(validator('red', 'color')).toBeUndefined();
-      expect(validator('green', 'color')).toBeUndefined();
-      expect(validator('yellow', 'color')).toBe('color must be one of: red, green, blue');
-    });
-
-    test('case sensitive by default', () => {
-      const validator = oneOf(['Yes', 'No']);
-      expect(validator('Yes', 'answer')).toBeUndefined();
-      expect(validator('yes', 'answer')).toBe('answer must be one of: Yes, No');
-    });
-
-    test('case insensitive option', () => {
-      const validator = oneOf(['Yes', 'No'], { caseSensitive: false });
-      expect(validator('YES', 'answer')).toBeUndefined();
-      expect(validator('yes', 'answer')).toBeUndefined();
-    });
-
-    test('returns undefined for empty strings', () => {
-      const validator = oneOf(['a', 'b']);
-      expect(validator('', 'choice')).toBeUndefined();
-    });
-  });
-
   describe('date', () => {
     test('validates ISO date strings', () => {
       const validator = date();
@@ -235,32 +123,6 @@ describe('validators', () => {
     test('returns undefined for empty strings', () => {
       const validator = boolean();
       expect(validator('', 'active')).toBeUndefined();
-    });
-  });
-
-  describe('custom', () => {
-    test('runs custom validation function', () => {
-      const validator = custom((value) =>
-        value.startsWith('SKU-') ? undefined : 'Must start with SKU-',
-      );
-      expect(validator('SKU-123', 'sku')).toBeUndefined();
-      expect(validator('PROD-123', 'sku')).toBe('Must start with SKU-');
-    });
-  });
-
-  describe('all', () => {
-    test('combines multiple validators', () => {
-      const validator = all(required(), number({ min: 0, max: 100 }));
-      expect(validator('', 'score')).toBe('score is required');
-      expect(validator('abc', 'score')).toBe('score must be a valid number');
-      expect(validator('-5', 'score')).toBe('score must be at least 0');
-      expect(validator('150', 'score')).toBe('score must be at most 100');
-      expect(validator('50', 'score')).toBeUndefined();
-    });
-
-    test('returns first error only', () => {
-      const validator = all(required(), email());
-      expect(validator('', 'email')).toBe('email is required');
     });
   });
 });

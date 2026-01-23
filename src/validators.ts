@@ -1,29 +1,12 @@
 /**
  * Built-in field validators for CSV validation.
- * These can be used with the schema-based validation system or standalone.
+ * For more complex validation, pass a custom callback to validate() or validateSchema().
  */
 
 /**
  * Result of a field validation. Returns undefined if valid, or an error message string if invalid.
  */
 export type FieldValidator = (value: string, fieldName: string) => string | undefined;
-
-/**
- * Creates a validator that requires a non-empty value.
- *
- * @example
- * ```ts
- * const schema = { name: [required()] };
- * ```
- */
-export function required(message?: string): FieldValidator {
-  return (value, fieldName) => {
-    if (value === undefined || value === null || value.trim() === '') {
-      return message ?? `${fieldName} is required`;
-    }
-    return undefined;
-  };
-}
 
 /**
  * Creates a validator that checks if the value is a valid number.
@@ -41,7 +24,7 @@ export function number(options?: {
   message?: string;
 }): FieldValidator {
   return (value, fieldName) => {
-    if (value.trim() === '') return undefined; // Empty values should use required() validator
+    if (value.trim() === '') return undefined; // Empty values pass - combine with required check if needed
 
     const num = Number(value);
     if (Number.isNaN(num)) {
@@ -67,7 +50,7 @@ export function number(options?: {
 /**
  * Creates a validator that checks if the value matches a regex pattern.
  *
- * @param pattern - Regular expression to match against
+ * @param regex - Regular expression to match against
  * @param message - Optional custom error message
  * @example
  * ```ts
@@ -80,120 +63,6 @@ export function pattern(regex: RegExp, message?: string): FieldValidator {
 
     if (!regex.test(value)) {
       return message ?? `${fieldName} does not match the required pattern`;
-    }
-    return undefined;
-  };
-}
-
-/**
- * Creates a validator that checks if the value is a valid email address.
- *
- * @example
- * ```ts
- * const schema = { email: [email()] };
- * ```
- */
-export function email(message?: string): FieldValidator {
-  // RFC 5322 simplified email regex
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return (value, fieldName) => {
-    if (value.trim() === '') return undefined;
-
-    if (!emailRegex.test(value)) {
-      return message ?? `${fieldName} must be a valid email address`;
-    }
-    return undefined;
-  };
-}
-
-/**
- * Creates a validator that checks if the value is a valid URL.
- *
- * @example
- * ```ts
- * const schema = { website: [url()] };
- * ```
- */
-export function url(message?: string): FieldValidator {
-  return (value, fieldName) => {
-    if (value.trim() === '') return undefined;
-
-    try {
-      new URL(value);
-      return undefined;
-    } catch {
-      return message ?? `${fieldName} must be a valid URL`;
-    }
-  };
-}
-
-/**
- * Creates a validator that checks string length constraints.
- *
- * @param options - Length constraints
- * @example
- * ```ts
- * const schema = { username: [length({ min: 3, max: 20 })] };
- * ```
- */
-export function length(options: {
-  min?: number;
-  max?: number;
-  exact?: number;
-  message?: string;
-}): FieldValidator {
-  return (value, fieldName) => {
-    if (value.trim() === '' && options.min === undefined && options.exact === undefined) {
-      return undefined;
-    }
-
-    const len = value.length;
-
-    if (options.exact !== undefined && len !== options.exact) {
-      return options.message ?? `${fieldName} must be exactly ${options.exact} characters`;
-    }
-
-    if (options.min !== undefined && len < options.min) {
-      return options.message ?? `${fieldName} must be at least ${options.min} characters`;
-    }
-
-    if (options.max !== undefined && len > options.max) {
-      return options.message ?? `${fieldName} must be at most ${options.max} characters`;
-    }
-
-    return undefined;
-  };
-}
-
-/**
- * Creates a validator that checks if the value is one of the allowed values.
- *
- * @param allowedValues - Array of allowed string values
- * @param options - Optional settings
- * @example
- * ```ts
- * const schema = { status: [oneOf(['active', 'inactive', 'pending'])] };
- * ```
- */
-export function oneOf(
-  allowedValues: readonly string[],
-  options?: {
-    caseSensitive?: boolean;
-    message?: string;
-  },
-): FieldValidator {
-  const caseSensitive = options?.caseSensitive ?? true;
-  const normalizedValues = caseSensitive
-    ? allowedValues
-    : allowedValues.map((v) => v.toLowerCase());
-
-  return (value, fieldName) => {
-    if (value.trim() === '') return undefined;
-
-    const normalizedValue = caseSensitive ? value : value.toLowerCase();
-
-    if (!normalizedValues.includes(normalizedValue)) {
-      return options?.message ?? `${fieldName} must be one of: ${allowedValues.join(', ')}`;
     }
     return undefined;
   };
@@ -228,12 +97,10 @@ export function date(options?: {
       const month = Number(match[1]);
       const day = Number(match[2]);
       const year = Number(match[3]);
-      // Validate month and day ranges
       if (month < 1 || month > 12 || day < 1 || day > 31) {
         return options?.message ?? `${fieldName} must be a valid date (MM/DD/YYYY)`;
       }
       parsed = new Date(year, month - 1, day);
-      // Check if date is valid (handles invalid dates like Feb 30)
       if (parsed.getMonth() !== month - 1 || parsed.getDate() !== day) {
         return options?.message ?? `${fieldName} must be a valid date (MM/DD/YYYY)`;
       }
@@ -246,12 +113,10 @@ export function date(options?: {
       const day = Number(match[1]);
       const month = Number(match[2]);
       const year = Number(match[3]);
-      // Validate month and day ranges
       if (month < 1 || month > 12 || day < 1 || day > 31) {
         return options?.message ?? `${fieldName} must be a valid date (DD/MM/YYYY)`;
       }
       parsed = new Date(year, month - 1, day);
-      // Check if date is valid
       if (parsed.getMonth() !== month - 1 || parsed.getDate() !== day) {
         return options?.message ?? `${fieldName} must be a valid date (DD/MM/YYYY)`;
       }
@@ -293,42 +158,6 @@ export function boolean(message?: string): FieldValidator {
 
     if (!validValues.includes(value.toLowerCase())) {
       return message ?? `${fieldName} must be a boolean value (true/false, yes/no, 1/0)`;
-    }
-    return undefined;
-  };
-}
-
-/**
- * Creates a validator that runs a custom validation function.
- *
- * @param fn - Custom validation function
- * @example
- * ```ts
- * const schema = {
- *   sku: [custom((value) => value.startsWith('SKU-') ? undefined : 'Invalid SKU format')]
- * };
- * ```
- */
-export function custom(
-  fn: (value: string, fieldName: string) => string | undefined,
-): FieldValidator {
-  return fn;
-}
-
-/**
- * Combines multiple validators into one. All validators must pass.
- *
- * @param validators - Array of validators to combine
- * @example
- * ```ts
- * const schema = { age: [all(required(), number({ min: 0 }))] };
- * ```
- */
-export function all(...validators: FieldValidator[]): FieldValidator {
-  return (value, fieldName) => {
-    for (const validator of validators) {
-      const error = validator(value, fieldName);
-      if (error) return error;
     }
     return undefined;
   };
