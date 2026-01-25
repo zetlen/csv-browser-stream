@@ -263,10 +263,13 @@ test.describe('toCSV and downloadCSV', () => {
   test('converts array of objects to CSV string', async ({ page }) => {
     const result = await page.evaluate(() => {
       const { toCSV } = (window as any).csvBrowserStream;
-      return toCSV([
-        { name: 'Alice', age: '30' },
-        { name: 'Bob', age: '25' },
-      ]);
+      return toCSV(
+        [
+          { name: 'Alice', age: '30' },
+          { name: 'Bob', age: '25' },
+        ],
+        { lineEnding: '\n' },
+      );
     });
 
     expect(result).toBe('name,age\nAlice,30\nBob,25');
@@ -279,26 +282,21 @@ test.describe('toCSV and downloadCSV', () => {
       const originalCreateObjectURL = URL.createObjectURL;
       const originalRevokeObjectURL = URL.revokeObjectURL;
 
-      let createdUrl = '';
-      URL.createObjectURL = (blob: Blob) => {
-        createdUrl = 'blob:mock-url';
-        return createdUrl;
-      };
+      URL.createObjectURL = () => 'blob:mock-url';
       URL.revokeObjectURL = () => {};
 
       // Track if link was clicked
       let linkClicked = false;
-      let linkHref = '';
       let linkDownload = '';
 
       const originalCreateElement = document.createElement.bind(document);
       document.createElement = ((tagName: string) => {
         const el = originalCreateElement(tagName);
         if (tagName === 'a') {
-          el.click = () => {
+          const anchor = el as HTMLAnchorElement;
+          anchor.click = () => {
             linkClicked = true;
-            linkHref = el.href;
-            linkDownload = el.download;
+            linkDownload = anchor.download;
           };
         }
         return el;
