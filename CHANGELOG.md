@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.4...csv-browser-stream-v1.2.0) (2026-01-25)
+
+
+### Features
+
+* expose raw fields array and add strictColumns option ([#8](https://github.com/zetlen/csv-browser-stream/issues/8)) ([fef6649](https://github.com/zetlen/csv-browser-stream/commit/fef66496fd5e7fa2eedbe804a1a16a155ce840cf)), closes [#7](https://github.com/zetlen/csv-browser-stream/issues/7)
+
 ## [1.1.4](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.3...csv-browser-stream-v1.1.4) (2026-01-25)
 
 
