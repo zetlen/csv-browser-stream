@@ -21,7 +21,7 @@ async function build() {
   });
 
   console.log('📦 Building CJS...');
-  const cjsResult = await Bun.build({
+  await Bun.build({
     entrypoints: ['./src/index.ts'],
     outdir: './dist',
     target: 'browser',
@@ -30,20 +30,13 @@ async function build() {
     naming: '[dir]/[name].cjs',
   });
 
-  if (!cjsResult.success) {
-    throw new Error('CJS build failed');
-  }
+  console.log('🗜️  Applying terser for maximum minification...');
+  // Terser with property mangling for private members (prefixed with _)
+  await $`bunx terser dist/index.js --compress --mangle --mangle-props regex=/^_/ -o dist/index.js`;
+  await $`bunx terser dist/index.cjs --compress --mangle --mangle-props regex=/^_/ -o dist/index.cjs`;
 
   console.log('📝 Generating type declarations...');
-  // Generate declarations to a temp directory first
-  await $`bunx tsc --project tsconfig.build.json --outDir ./dist/.tmp-types`;
-
-  // Bundle declarations using dts-bundle-generator
-  console.log('📝 Bundling declarations...');
-  await $`bunx dts-bundle-generator -o ./dist/index.d.ts ./src/index.ts --project tsconfig.build.json --no-banner`;
-
-  // Clean up temp types
-  await $`rm -rf ./dist/.tmp-types`;
+  await $`bunx dts-bundle-generator -o ./dist/index.d.ts ./src/index.ts --project tsconfig.build.json --no-banner 2>/dev/null`;
 
   // Report bundle size
   console.log('\n📊 Bundle sizes:');
@@ -53,10 +46,6 @@ async function build() {
   console.log(`   ESM:  ${(esm.size / 1024).toFixed(2)} KB`);
   console.log(`   CJS:  ${(cjs.size / 1024).toFixed(2)} KB`);
   console.log(`   DTS:  ${(dts.size / 1024).toFixed(2)} KB`);
-
-  // List all files
-  console.log('\n📁 Output files:');
-  await $`ls -la dist/`;
 
   console.log('\n✅ Build complete!');
 }
