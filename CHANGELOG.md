@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.4](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.3...csv-browser-stream-v1.1.4) (2026-01-25)
+
+
+### Bug Fixes
+
+* add repository field to package.json for npm provenance ([4d175f9](https://github.com/zetlen/csv-browser-stream/commit/4d175f9bdf080796e86ca84a37cb63522903bd5f))
+
 ## [1.1.3](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.2...csv-browser-stream-v1.1.3) (2026-01-25)
 
 
