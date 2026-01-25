@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.3](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.2...csv-browser-stream-v1.1.3) (2026-01-25)
+
+
+### Bug Fixes
+
+* add setup-node with registry-url and update npm for OIDC ([3640ae7](https://github.com/zetlen/csv-browser-stream/commit/3640ae77a8642432ee7c8954ba899a8a5d2cc6e8))
+
 ## [1.1.2](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.1...csv-browser-stream-v1.1.2) (2026-01-25)
 
 
