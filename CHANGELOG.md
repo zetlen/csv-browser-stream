@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.0...csv-browser-stream-v1.1.1) (2026-01-25)
+
+
+### Bug Fixes
+
+* use OIDC for npm trusted publishing ([d81ea1d](https://github.com/zetlen/csv-browser-stream/commit/d81ea1dad5a9d46a6b87242846ba2836d60dd065))
+
 ## [1.1.0](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.0.0...csv-browser-stream-v1.1.0) (2026-01-25)
 
 
