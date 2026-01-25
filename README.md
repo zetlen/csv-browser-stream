@@ -43,7 +43,9 @@ import { streamCSV } from 'csv-browser-stream';
 const stream = streamCSV(file);
 
 stream.on('csvrow', (e) => {
-  console.log(e.detail.fields); // { name: 'Alice', age: '30' }
+  console.log(e.detail.fields);      // { name: 'Alice', age: '30' }
+  console.log(e.detail.fieldsArray); // ['Alice', '30']
+  console.log(e.detail.columnCount); // 2
 });
 
 // Consume the stream
@@ -129,7 +131,8 @@ const stream = streamCSV(input, {
   delimiter: ',',        // Field delimiter (default: ',')
   expectHeaders: true,   // First row is headers (default: true)
   headers: ['a', 'b'],   // Predefined headers
-  signal: AbortSignal    // Cancel streaming
+  signal: AbortSignal,   // Cancel streaming
+  strictColumns: false   // Error on extra non-empty columns (default: false)
 });
 
 stream.on('csvrow', (e) => { /* e.detail.fields */ });
@@ -146,6 +149,31 @@ stream.on('end', (e) => { /* e.detail.totalRows */ });
 | `true` | set | Validates first row matches, errors if not |
 | `false` | not set | Uses `"1"`, `"2"`, `"3"`... as keys |
 | `false` | set | Applies headers to all rows (first row is data) |
+
+#### Column validation with `strictColumns`
+
+When `strictColumns: true`, rows with extra non-empty columns trigger an error. Trailing empty columns are tolerated.
+
+```typescript
+// Validate column count
+const stream = streamCSV(file, {
+  strictColumns: true,
+  headers: ['name', 'age']
+});
+
+stream.on('error', (e) => {
+  // "Row 5 has 4 columns but expected 2"
+  console.error(e.detail.message);
+});
+
+// Access raw column data for custom validation
+stream.on('csvrow', (e) => {
+  const { fieldsArray, columnCount } = e.detail;
+  if (columnCount !== expectedColumns) {
+    console.warn(`Row has ${columnCount} columns`);
+  }
+});
+```
 
 ### `collect(stream, callback, initialValue)`
 

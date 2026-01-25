@@ -481,3 +481,175 @@ describe('progress events', () => {
     expect(progressEvents).toHaveLength(0);
   });
 });
+
+describe('fieldsArray and columnCount in csvrow events', () => {
+  test('includes fieldsArray with raw parsed values', async () => {
+    const csv = 'name,age\nAlice,30\nBob,25';
+    const { rows } = await processCSV(csv);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.fieldsArray).toEqual(['Alice', '30']);
+    expect(rows[1]!.fieldsArray).toEqual(['Bob', '25']);
+  });
+
+  test('includes columnCount matching fieldsArray length', async () => {
+    const csv = 'name,age\nAlice,30\nBob,25';
+    const { rows } = await processCSV(csv);
+
+    expect(rows[0]!.columnCount).toBe(2);
+    expect(rows[1]!.columnCount).toBe(2);
+  });
+
+  test('fieldsArray preserves extra columns beyond headers', async () => {
+    const csv = 'name,age\nAlice,30,extra,data';
+    const { rows } = await processCSV(csv);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fields).toEqual({ name: 'Alice', age: '30' }); // Only mapped columns
+    expect(rows[0]!.fieldsArray).toEqual(['Alice', '30', 'extra', 'data']); // All columns
+    expect(rows[0]!.columnCount).toBe(4);
+  });
+
+  test('fieldsArray shows fewer columns than headers', async () => {
+    const csv = 'a,b,c\n1,2';
+    const { rows } = await processCSV(csv);
+
+    expect(rows[0]!.fields).toEqual({ a: '1', b: '2', c: '' }); // Missing filled with empty
+    expect(rows[0]!.fieldsArray).toEqual(['1', '2']); // Raw parsed values
+    expect(rows[0]!.columnCount).toBe(2);
+  });
+
+  test('fieldsArray works without headers (expectHeaders: false)', async () => {
+    const csv = 'Alice,30\nBob,25';
+    const { rows } = await processCSV(csv, { expectHeaders: false });
+
+    expect(rows[0]!.fieldsArray).toEqual(['Alice', '30']);
+    expect(rows[0]!.columnCount).toBe(2);
+    expect(rows[1]!.fieldsArray).toEqual(['Bob', '25']);
+    expect(rows[1]!.columnCount).toBe(2);
+  });
+
+  test('fieldsArray with predefined headers', async () => {
+    const csv = 'Alice,30,extra\nBob,25';
+    const { rows } = await processCSV(csv, { expectHeaders: false, headers: ['name', 'age'] });
+
+    expect(rows[0]!.fieldsArray).toEqual(['Alice', '30', 'extra']);
+    expect(rows[0]!.columnCount).toBe(3);
+    expect(rows[1]!.fieldsArray).toEqual(['Bob', '25']);
+    expect(rows[1]!.columnCount).toBe(2);
+  });
+
+  test('fieldsArray preserves quoted values correctly', async () => {
+    const csv = 'name,note\nAlice,"Hello, World"\nBob,"Line 1\nLine 2"';
+    const { rows } = await processCSV(csv);
+
+    expect(rows[0]!.fieldsArray).toEqual(['Alice', 'Hello, World']);
+    expect(rows[1]!.fieldsArray).toEqual(['Bob', 'Line 1\nLine 2']);
+  });
+});
+
+describe('strictColumns option', () => {
+  test('strictColumns: false (default) allows extra columns', async () => {
+    const csv = 'name,age\nAlice,30,extra,data';
+    const { rows, errors } = await processCSV(csv, { strictColumns: false });
+
+    expect(errors).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fields).toEqual({ name: 'Alice', age: '30' });
+  });
+
+  test('strictColumns: true errors on extra non-empty columns', async () => {
+    const csv = 'name,age\nAlice,30,extra';
+    const { rows, errors } = await processCSV(csv, { strictColumns: true });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.type).toBe('PARSE_ERROR');
+    expect(errors[0]!.message).toContain('3 columns');
+    expect(errors[0]!.message).toContain('expected 2');
+    expect(rows).toHaveLength(0);
+  });
+
+  test('strictColumns: true allows trailing empty columns', async () => {
+    const csv = 'name,age\nAlice,30,,,';
+    const { rows, errors } = await processCSV(csv, { strictColumns: true });
+
+    expect(errors).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fields).toEqual({ name: 'Alice', age: '30' });
+  });
+
+  test('strictColumns: true allows whitespace-only trailing columns', async () => {
+    const csv = 'name,age\nAlice,30,   ,  ';
+    const { rows, errors } = await processCSV(csv, { strictColumns: true });
+
+    expect(errors).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+  });
+
+  test('strictColumns: true errors if any extra column has content', async () => {
+    const csv = 'name,age\nAlice,30,,data,';
+    const { rows, errors } = await processCSV(csv, { strictColumns: true });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.message).toContain('5 columns');
+    expect(rows).toHaveLength(0);
+  });
+
+  test('strictColumns: true stops processing after error', async () => {
+    const csv = 'name,age\nAlice,30,extra\nBob,25';
+    const { rows, errors, endEvent } = await processCSV(csv, { strictColumns: true });
+
+    expect(errors).toHaveLength(1);
+    expect(rows).toHaveLength(0); // No rows processed after error
+    // End event does not fire on error (consistent with other parse errors)
+    expect(endEvent).toBeNull();
+  });
+
+  test('strictColumns: true works with validated headers', async () => {
+    const csv = 'name,age\nAlice,30,extra';
+    const { errors } = await processCSV(csv, {
+      strictColumns: true,
+      expectHeaders: true,
+      headers: ['name', 'age'],
+    });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.message).toContain('3 columns');
+  });
+
+  test('strictColumns: true works with predefined headers (no header row)', async () => {
+    const csv = 'Alice,30,extra\nBob,25';
+    const { rows, errors } = await processCSV(csv, {
+      strictColumns: true,
+      expectHeaders: false,
+      headers: ['name', 'age'],
+    });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.lineNum).toBe(1); // First line is data
+    expect(rows).toHaveLength(0);
+  });
+
+  test('strictColumns: true with fewer columns than headers is allowed', async () => {
+    const csv = 'a,b,c\n1,2';
+    const { rows, errors } = await processCSV(csv, { strictColumns: true });
+
+    expect(errors).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fields).toEqual({ a: '1', b: '2', c: '' });
+  });
+
+  test('strictColumns without headers uses dynamic column count', async () => {
+    // When no headers are defined and expectHeaders: false, strictColumns has no effect
+    // since there's nothing to validate against
+    const csv = 'Alice,30,extra\nBob,25';
+    const { rows, errors } = await processCSV(csv, {
+      strictColumns: true,
+      expectHeaders: false,
+    });
+
+    // No errors because without headers there's nothing to validate against
+    expect(errors).toHaveLength(0);
+    expect(rows).toHaveLength(2);
+  });
+});
