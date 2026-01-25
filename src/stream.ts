@@ -29,25 +29,26 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
   private _buffer = '';
   private _bytesProcessed = 0;
   private _lastProgressRow = 0;
-  private _options: Required<
-    Pick<CSVStreamOptions, 'delimiter' | 'hasHeaders' | 'progressInterval'>
-  > &
+  private _options: Required<Pick<CSVStreamOptions, 'delimiter' | 'expectHeaders' | 'progressInterval'>> &
     CSVStreamOptions;
   private _aborted = false;
+  private _headersValidated = false;
+  private _hasError = false;
 
   constructor(options: CSVStreamOptions = {}) {
     super();
 
     this._options = {
       delimiter: options.delimiter ?? ',',
-      hasHeaders: options.hasHeaders ?? true,
+      expectHeaders: options.expectHeaders ?? true,
       headers: options.headers,
       signal: options.signal,
       totalBytes: options.totalBytes,
       progressInterval: options.progressInterval ?? 1000,
     };
 
-    if (options.headers) {
+    // If headers provided and not expecting header row, apply them immediately
+    if (options.headers && !this._options.expectHeaders) {
       this._headers = options.headers.map(normalizeHeader);
     }
 
@@ -124,14 +125,14 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
   }
 
   private _transform(chunk: string, controller: TransformStreamDefaultController<CSVRow>): void {
-    if (this._aborted) return;
+    if (this._aborted || this._hasError) return;
     this._bytesProcessed += new TextEncoder().encode(chunk).length;
     this._buffer += chunk;
     this._processBuffer(controller);
   }
 
   private _flush(controller: TransformStreamDefaultController<CSVRow>): void {
-    if (this._aborted) return;
+    if (this._aborted || this._hasError) return;
 
     if (this._buffer.length > 0) {
       this._processLine(this._buffer, controller);
@@ -159,7 +160,7 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
         inQuotes = !inQuotes;
       } else if (char === '\n' && !inQuotes) {
         const line = this._buffer.slice(lineStart, i);
-        if (this._aborted) return;
+        if (this._aborted || this._hasError) return;
         this._processLine(line, controller);
         lineStart = i + 1;
       }
@@ -168,10 +169,7 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
     this._buffer = this._buffer.slice(lineStart);
   }
 
-  private _processLine(
-    rawLine: string,
-    controller: TransformStreamDefaultController<CSVRow>,
-  ): void {
+  private _processLine(rawLine: string, controller: TransformStreamDefaultController<CSVRow>): void {
     this._lineNum += 1;
     const line = rawLine.replace(/\r$/, '');
 
@@ -180,6 +178,7 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
     const parsed = parseCsvLine(line, this._options.delimiter);
 
     if (parsed.error) {
+      this._hasError = true;
       this._emit('error', {
         type: parsed.error,
         message: `CSV parsing error: ${parsed.error}`,
@@ -191,8 +190,30 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
 
     const fields = parsed.fields;
 
-    if (!this._headers && this._options.hasHeaders) {
-      this._headers = fields.map((f, i) => (i === 0 ? normalizeHeader(f) : f.trim()));
+    // Handle header row logic
+    if (this._options.expectHeaders && !this._headersValidated) {
+      this._headersValidated = true;
+      const parsedHeaders = fields.map((f, i) => (i === 0 ? normalizeHeader(f) : f.trim()));
+
+      if (this._options.headers) {
+        // Validate that first row matches expected headers
+        const expected = this._options.headers.map(normalizeHeader);
+        const matches =
+          expected.length === parsedHeaders.length && expected.every((h, i) => h === parsedHeaders[i]);
+
+        if (!matches) {
+          this._hasError = true;
+          this._emit('error', {
+            type: 'PARSE_ERROR',
+            message: `Header mismatch: expected [${expected.join(', ')}], got [${parsedHeaders.join(', ')}]`,
+            lineNum: this._lineNum,
+            raw: line,
+          } satisfies CSVErrorEvent);
+          return;
+        }
+      }
+
+      this._headers = parsedHeaders;
       this._emit('headers', {
         headers: this._headers,
         lineNum: this._lineNum,
@@ -202,6 +223,7 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
 
     this._rowNum += 1;
 
+    // Build row object
     let row: CSVRow;
     if (this._headers) {
       const obj: Record<string, string> = {};
@@ -210,7 +232,12 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
       }
       row = obj;
     } else {
-      row = fields;
+      // No headers and expectHeaders is false: use "1", "2", "3"... as keys
+      const obj: Record<string, string> = {};
+      for (let i = 0; i < fields.length; i++) {
+        obj[String(i + 1)] = fields[i]!;
+      }
+      row = obj;
     }
 
     this._emit('csvrow', {

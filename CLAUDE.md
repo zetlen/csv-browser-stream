@@ -1,6 +1,6 @@
 # csv-browser-stream
 
-Streaming CSV parser, validator, and writer for the browser. 7 KB minified.
+Streaming CSV parser and writer for the browser.
 
 ## Commands
 
@@ -19,9 +19,7 @@ bun run check       # Lint + format with Biome
 src/
   index.ts      - Public exports
   stream.ts     - CSVStream (TransformStream + EventTarget), streamCSV()
-  validate.ts   - validate() function
-  schema.ts     - validateSchema(), schema types
-  validators.ts - number(), pattern() validators
+  collect.ts    - collect() reducer function
   parser.ts     - parseCsvLine(), normalizeHeader() (internal)
   writer.ts     - toCSV(), downloadCSV()
   types.ts      - TypeScript types
@@ -37,18 +35,30 @@ tests/
 // Parsing
 streamCSV(input, options?)  // Returns CSVStream
 
-// Validation
-validate(input, options?, onRow?, onProgress?)
-validateSchema(input, schema, options?)
-
-// Validators
-number(options?)
-pattern(regex, message?)
+// Collecting
+collect(stream, callback, initialValue)  // Returns Promise<T>
 
 // Writing
 toCSV(data, options?)
 downloadCSV(data, filename, options?)
 ```
+
+## CSVStream
+
+CSVStream implements `TransformStream<string, CSVRow>` and can be used directly in stream pipelines:
+
+```typescript
+await fetch('/data.csv')
+  .then(r => r.body!.pipeThrough(new TextDecoderStream()))
+  .pipeTo(new CSVStream().writable);
+```
+
+## Header Options
+
+- `expectHeaders: true` (default) + no `headers`: first row becomes keys
+- `expectHeaders: true` + `headers` provided: validates first row matches, errors if not
+- `expectHeaders: false` + no `headers`: uses "1", "2", "3"... as keys
+- `expectHeaders: false` + `headers` provided: applies headers to all rows
 
 ## Supported Inputs
 
@@ -59,4 +69,5 @@ downloadCSV(data, filename, options?)
 - Browser-only: uses Web Streams API, no Node.js APIs
 - CSVStream extends EventTarget (not Node EventEmitter)
 - streamCSV() is synchronous, returns CSVStream immediately
-- validate() and validateSchema() are async, return Promise<ValidateResult>
+- collect() uses reducer pattern: callback receives (accumulated, row), throw to stop early
+- collect() rejects with CSVStreamError on stream errors (parsing, header mismatch)
