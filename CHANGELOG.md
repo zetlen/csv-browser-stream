@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.1...csv-browser-stream-v1.1.2) (2026-01-25)
+
+
+### Bug Fixes
+
+* remove setup-node for pure OIDC auth ([9d990b0](https://github.com/zetlen/csv-browser-stream/commit/9d990b06175a298dfe3b44f10c2cd4b09516ab88))
+
 ## [1.1.1](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.0...csv-browser-stream-v1.1.1) (2026-01-25)
 
 
