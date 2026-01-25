@@ -1,14 +1,14 @@
 # csv-browser-stream
 
-Streaming CSV parser, validator, and writer for the browser. Process large CSVs without freezing the UI.
+Streaming CSV parser and writer for the browser. Process large CSVs without freezing the UI.
 
-**7 KB** minified. Zero dependencies.
+**4.7 KB** minified. Zero dependencies.
 
 ## Features
 
 - **Streaming**: Process CSVs of any size without loading into memory
-- **Browser-native**: Built on Web Streams API
-- **Validation**: Row-by-row validation with schema support
+- **Browser-native**: Built on Web Streams API, CSVStream is a standard `TransformStream`
+- **Reducer pattern**: Collect rows with a familiar `reduce`-style API
 - **Writing**: Convert data to CSV and trigger downloads
 - **TypeScript**: Fully typed API
 
@@ -20,13 +20,27 @@ npm install csv-browser-stream
 
 ## Quick Start
 
-### Parse a CSV
+### Parse and collect rows
+
+```typescript
+import { streamCSV, collect } from 'csv-browser-stream';
+
+const response = await fetch('/data.csv');
+const stream = streamCSV(response);
+
+// Collect all rows into an array
+const rows = await collect(stream, (arr, row) => [...arr, row], []);
+
+// Or sum a column
+const total = await collect(stream, (sum, row) => sum + Number(row.amount), 0);
+```
+
+### Stream with events
 
 ```typescript
 import { streamCSV } from 'csv-browser-stream';
 
-const response = await fetch('/data.csv');
-const stream = streamCSV(response);
+const stream = streamCSV(file);
 
 stream.on('csvrow', (e) => {
   console.log(e.detail.fields); // { name: 'Alice', age: '30' }
@@ -38,39 +52,53 @@ for await (const row of stream.readable) {
 }
 ```
 
-### Validate a CSV
+### Use as a TransformStream
+
+CSVStream implements `TransformStream<string, CSVRow>` and works in pipelines:
 
 ```typescript
-import { validate } from 'csv-browser-stream';
+import { CSVStream } from 'csv-browser-stream';
 
-const file = document.querySelector('input[type="file"]').files[0];
-
-const result = await validate(file, {
-  requiredHeaders: ['name', 'email', 'age']
-}, ({ fields }) => {
-  const errors = [];
-  if (!fields.email.includes('@')) errors.push('Invalid email');
-  if (isNaN(Number(fields.age))) errors.push('Age must be a number');
-  return errors;
-});
-
-if (result.valid) {
-  console.log(`Validated ${result.rowCount} rows`);
-} else {
-  console.log(result.invalidRows);
-}
+await fetch('/data.csv')
+  .then(r => r.body!.pipeThrough(new TextDecoderStream()))
+  .pipeThrough(new CSVStream())
+  .pipeTo(new WritableStream({
+    write(row) {
+      console.log(row);
+    }
+  }));
 ```
 
-### Schema validation
+### Validate while collecting
 
 ```typescript
-import { validateSchema, number, pattern } from 'csv-browser-stream';
+import { streamCSV, collect, CollectAbortError } from 'csv-browser-stream';
 
-const result = await validateSchema(file, {
-  name: [(v, f) => !v.trim() ? `${f} required` : undefined],
-  age: [number({ min: 0, max: 150 })],
-  code: [pattern(/^[A-Z]{3}-\d+$/)]
-});
+const errors: string[] = [];
+const rows = await collect(
+  streamCSV(file),
+  (arr, row) => {
+    if (!row.email?.includes('@')) {
+      errors.push(`Row ${arr.length + 1}: invalid email`);
+    }
+    return [...arr, row];
+  },
+  []
+);
+
+// Or stop early on error
+try {
+  await collect(stream, (arr, row) => {
+    if (!row.email?.includes('@')) {
+      throw new Error('Invalid email');
+    }
+    return [...arr, row];
+  }, []);
+} catch (err) {
+  if (err instanceof CollectAbortError) {
+    console.log('Stopped:', err.message);
+  }
+}
 ```
 
 ### Export to CSV
@@ -98,10 +126,10 @@ Parse CSV from string, Blob, Response, or ReadableStream.
 
 ```typescript
 const stream = streamCSV(input, {
-  delimiter: ',',      // Field delimiter
-  hasHeaders: true,    // First row is headers
-  headers: ['a', 'b'], // Predefined headers
-  signal: controller.signal // AbortSignal
+  delimiter: ',',        // Field delimiter (default: ',')
+  expectHeaders: true,   // First row is headers (default: true)
+  headers: ['a', 'b'],   // Predefined headers
+  signal: AbortSignal    // Cancel streaming
 });
 
 stream.on('csvrow', (e) => { /* e.detail.fields */ });
@@ -110,46 +138,37 @@ stream.on('error', (e) => { /* e.detail.message */ });
 stream.on('end', (e) => { /* e.detail.totalRows */ });
 ```
 
-### `validate(input, options?, onRow?, onProgress?)`
+#### Header options
 
-Validate CSV with row callback.
+| `expectHeaders` | `headers` | Behavior |
+|-----------------|-----------|----------|
+| `true` (default) | not set | First row becomes keys |
+| `true` | set | Validates first row matches, errors if not |
+| `false` | not set | Uses `"1"`, `"2"`, `"3"`... as keys |
+| `false` | set | Applies headers to all rows (first row is data) |
 
-```typescript
-const result = await validate(input, {
-  requiredHeaders: ['name', 'email'],
-  maxInvalidRows: 100
-}, (row) => {
-  // Return array of error strings, or undefined if valid
-  return row.fields.name ? undefined : ['Name required'];
-});
-```
+### `collect(stream, callback, initialValue)`
 
-### `validateSchema(input, schema, options?)`
-
-Validate CSV against a schema.
+Collect rows using a reducer pattern. Returns a Promise.
 
 ```typescript
-const result = await validateSchema(input, {
-  email: [pattern(/@/)],
-  age: [number({ min: 0 })]
-});
+// Sum values
+const total = await collect(stream, (sum, row) => sum + Number(row.amount), 0);
+
+// Build an object
+const byId = await collect(stream, (map, row) => {
+  map[row.id] = row;
+  return map;
+}, {});
+
+// Stop early by throwing
+await collect(stream, (arr, row) => {
+  if (arr.length >= 100) throw new Error('Limit reached');
+  return [...arr, row];
+}, []);
 ```
 
-### `number(options?)`
-
-Validate numeric fields.
-
-```typescript
-number({ min: 0, max: 100, integer: true, allowEmpty: true })
-```
-
-### `pattern(regex, message?)`
-
-Validate against regex.
-
-```typescript
-pattern(/^\d{3}-\d{4}$/, 'Invalid phone format')
-```
+Throws `CollectAbortError` if callback throws, `CSVStreamError` on parse errors.
 
 ### `toCSV(data, options?)`
 
@@ -158,11 +177,11 @@ Convert array of objects/arrays to CSV string.
 ```typescript
 toCSV(data, {
   delimiter: ',',
-  lineEnding: '\r\n',
+  lineEnding: '\r\n',  // CRLF per RFC 4180
   headers: ['col1', 'col2'],
   includeHeaders: true,
   quoteAll: false
-})
+});
 ```
 
 ### `downloadCSV(data, filename, options?)`
@@ -178,11 +197,14 @@ downloadCSV(data, 'export.csv');
 ```typescript
 import type {
   CSVInput,           // string | Blob | Response | ReadableStream<string>
-  CSVRow,             // string[] | Record<string, string>
+  CSVRow,             // Record<string, string>
   CSVStreamOptions,
-  ValidateResult,
-  FieldValidator,
   CSVWriterOptions,
+} from 'csv-browser-stream';
+
+import {
+  CollectAbortError,  // Thrown when collect callback throws
+  CSVStreamError,     // Thrown on parse errors
 } from 'csv-browser-stream';
 ```
 
