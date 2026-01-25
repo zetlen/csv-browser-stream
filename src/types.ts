@@ -21,6 +21,12 @@ export interface CSVStreamOptions {
   totalBytes?: number;
   /** Emit progress events every N rows. Default: 1000. Set to 0 to disable. */
   progressInterval?: number;
+  /**
+   * When true, emits an error if a row has more non-empty columns than headers.
+   * Trailing empty columns are tolerated. Requires headers to be defined.
+   * Defaults to false.
+   */
+  strictColumns?: boolean;
 }
 
 /**
@@ -39,6 +45,10 @@ export interface CSVRowEvent {
   fields: CSVRow;
   /** Raw line string before parsing. */
   raw: string;
+  /** Raw parsed fields as an array of strings before header mapping. */
+  fieldsArray: string[];
+  /** Number of columns in this row (fieldsArray.length). */
+  columnCount: number;
 }
 
 /**

@@ -29,7 +29,7 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
   private _buffer = '';
   private _bytesProcessed = 0;
   private _lastProgressRow = 0;
-  private _options: Required<Pick<CSVStreamOptions, 'delimiter' | 'expectHeaders' | 'progressInterval'>> &
+  private _options: Required<Pick<CSVStreamOptions, 'delimiter' | 'expectHeaders' | 'progressInterval' | 'strictColumns'>> &
     CSVStreamOptions;
   private _aborted = false;
   private _headersValidated = false;
@@ -45,6 +45,7 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
       signal: options.signal,
       totalBytes: options.totalBytes,
       progressInterval: options.progressInterval ?? 1000,
+      strictColumns: options.strictColumns ?? false,
     };
 
     // If headers provided and not expecting header row, apply them immediately
@@ -223,6 +224,22 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
 
     this._rowNum += 1;
 
+    // Strict column validation: error if extra non-empty columns exist
+    if (this._options.strictColumns && this._headers) {
+      const extraFields = fields.slice(this._headers.length);
+      const hasNonEmptyExtra = extraFields.some((f) => f.trim() !== '');
+      if (hasNonEmptyExtra) {
+        this._hasError = true;
+        this._emit('error', {
+          type: 'PARSE_ERROR',
+          message: `Row ${this._rowNum} has ${fields.length} columns but expected ${this._headers.length}`,
+          lineNum: this._lineNum,
+          raw: line,
+        } satisfies CSVErrorEvent);
+        return;
+      }
+    }
+
     // Build row object
     let row: CSVRow;
     if (this._headers) {
@@ -244,6 +261,8 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
       rowNum: this._rowNum,
       fields: row,
       raw: line,
+      fieldsArray: fields,
+      columnCount: fields.length,
     } satisfies CSVRowEvent);
 
     this._maybeEmitProgress();
