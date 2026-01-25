@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { CSVStream, streamCSV } from '../src/stream.ts';
-import type { CSVEndEvent, CSVHeadersEvent, CSVProgressEvent, CSVRowEvent } from '../src/types.ts';
+import type { CSVEndEvent, CSVErrorEvent, CSVHeadersEvent, CSVProgressEvent, CSVRowEvent } from '../src/types.ts';
 
 // Helper to pipe string content through CSVStream and collect results
 async function processCSV(
@@ -10,10 +10,12 @@ async function processCSV(
   rows: CSVRowEvent[];
   headersEvent: CSVHeadersEvent | null;
   endEvent: CSVEndEvent | null;
+  errors: CSVErrorEvent[];
 }> {
   const rows: CSVRowEvent[] = [];
   let headersEvent: CSVHeadersEvent | null = null;
   let endEvent: CSVEndEvent | null = null;
+  const errors: CSVErrorEvent[] = [];
 
   const stream = new CSVStream(options);
 
@@ -25,6 +27,9 @@ async function processCSV(
   });
   stream.on('end', (event: CustomEvent<CSVEndEvent>) => {
     endEvent = event.detail;
+  });
+  stream.on('error', (event: CustomEvent<CSVErrorEvent>) => {
+    errors.push(event.detail);
   });
 
   // Create a source stream from the CSV string
@@ -47,39 +52,58 @@ async function processCSV(
 
   await Promise.all([pipePromise, consumePromise]);
 
-  return { rows, headersEvent, endEvent };
+  return { rows, headersEvent, endEvent, errors };
 }
 
 describe('CSVStream', () => {
-  test('parses CSV with headers', async () => {
+  test('parses CSV with headers (default)', async () => {
     const csv = 'name,age\nAlice,30\nBob,25';
-    const { rows } = await processCSV(csv, { hasHeaders: true });
+    const { rows } = await processCSV(csv);
 
     expect(rows).toHaveLength(2);
     expect(rows[0]!.fields).toEqual({ name: 'Alice', age: '30' });
     expect(rows[1]!.fields).toEqual({ name: 'Bob', age: '25' });
   });
 
-  test('parses CSV without headers', async () => {
+  test('parses CSV without headers (uses numeric keys)', async () => {
     const csv = 'Alice,30\nBob,25';
-    const { rows } = await processCSV(csv, { hasHeaders: false });
+    const { rows } = await processCSV(csv, { expectHeaders: false });
 
     expect(rows).toHaveLength(2);
-    expect(rows[0]!.fields).toEqual(['Alice', '30']);
-    expect(rows[1]!.fields).toEqual(['Bob', '25']);
+    expect(rows[0]!.fields).toEqual({ '1': 'Alice', '2': '30' });
+    expect(rows[1]!.fields).toEqual({ '1': 'Bob', '2': '25' });
   });
 
-  test('uses predefined headers', async () => {
+  test('applies predefined headers to all rows (expectHeaders: false)', async () => {
     const csv = 'Alice,30\nBob,25';
-    const { rows } = await processCSV(csv, { headers: ['firstName', 'yearsOld'] });
+    const { rows } = await processCSV(csv, { expectHeaders: false, headers: ['firstName', 'yearsOld'] });
 
     expect(rows).toHaveLength(2);
     expect(rows[0]!.fields).toEqual({ firstName: 'Alice', yearsOld: '30' });
+    expect(rows[1]!.fields).toEqual({ firstName: 'Bob', yearsOld: '25' });
+  });
+
+  test('validates headers when expectHeaders: true and headers provided', async () => {
+    const csv = 'name,age\nAlice,30';
+    const { rows, errors } = await processCSV(csv, { expectHeaders: true, headers: ['name', 'age'] });
+
+    expect(errors).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fields).toEqual({ name: 'Alice', age: '30' });
+  });
+
+  test('emits error on header mismatch when validating', async () => {
+    const csv = 'name,age\nAlice,30';
+    const { rows, errors } = await processCSV(csv, { expectHeaders: true, headers: ['firstName', 'lastName'] });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.message).toContain('Header mismatch');
+    expect(rows).toHaveLength(0);
   });
 
   test('emits headers event', async () => {
     const csv = 'name,age\nAlice,30';
-    const { headersEvent } = await processCSV(csv, { hasHeaders: true });
+    const { headersEvent } = await processCSV(csv);
 
     expect(headersEvent).not.toBeNull();
     expect(headersEvent!.headers).toEqual(['name', 'age']);
@@ -88,7 +112,7 @@ describe('CSVStream', () => {
 
   test('emits end event', async () => {
     const csv = 'name,age\nAlice,30\nBob,25';
-    const { endEvent } = await processCSV(csv, { hasHeaders: true });
+    const { endEvent } = await processCSV(csv);
 
     expect(endEvent).not.toBeNull();
     expect(endEvent!.totalRows).toBe(2);
@@ -97,7 +121,7 @@ describe('CSVStream', () => {
 
   test('handles chunked input', async () => {
     const rows: CSVRowEvent[] = [];
-    const stream = new CSVStream({ hasHeaders: true });
+    const stream = new CSVStream();
 
     stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
       rows.push(event.detail);
@@ -132,14 +156,14 @@ describe('CSVStream', () => {
 
   test('skips empty lines', async () => {
     const csv = 'name,age\n\nAlice,30\n\nBob,25\n';
-    const { rows } = await processCSV(csv, { hasHeaders: true });
+    const { rows } = await processCSV(csv);
 
     expect(rows).toHaveLength(2);
   });
 
   test('handles Windows line endings (CRLF)', async () => {
     const csv = 'name,age\r\nAlice,30\r\nBob,25';
-    const { rows } = await processCSV(csv, { hasHeaders: true });
+    const { rows } = await processCSV(csv);
 
     expect(rows).toHaveLength(2);
     expect(rows[0]!.fields).toEqual({ name: 'Alice', age: '30' });
@@ -147,7 +171,7 @@ describe('CSVStream', () => {
 
   test('handles custom delimiter', async () => {
     const csv = 'name;age\nAlice;30';
-    const { rows } = await processCSV(csv, { hasHeaders: true, delimiter: ';' });
+    const { rows } = await processCSV(csv, { delimiter: ';' });
 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.fields).toEqual({ name: 'Alice', age: '30' });
@@ -155,7 +179,7 @@ describe('CSVStream', () => {
 
   test('fills missing fields with empty strings', async () => {
     const csv = 'a,b,c\n1,2';
-    const { rows } = await processCSV(csv, { hasHeaders: true });
+    const { rows } = await processCSV(csv);
 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.fields).toEqual({ a: '1', b: '2', c: '' });
@@ -163,7 +187,7 @@ describe('CSVStream', () => {
 
   test('includes row numbers', async () => {
     const csv = 'name,age\nAlice,30\nBob,25';
-    const { rows } = await processCSV(csv, { hasHeaders: true });
+    const { rows } = await processCSV(csv);
 
     expect(rows[0]!.rowNum).toBe(1);
     expect(rows[1]!.rowNum).toBe(2);
@@ -171,7 +195,7 @@ describe('CSVStream', () => {
 
   test('includes raw line in event', async () => {
     const csv = 'name,age\nAlice,30';
-    const { rows } = await processCSV(csv, { hasHeaders: true });
+    const { rows } = await processCSV(csv);
 
     expect(rows[0]!.raw).toBe('Alice,30');
   });
@@ -182,7 +206,7 @@ describe('streamCSV', () => {
     const csv = 'name,age\nAlice,30';
     const rows: CSVRowEvent[] = [];
 
-    const stream = streamCSV(csv, { hasHeaders: true });
+    const stream = streamCSV(csv);
 
     stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
       rows.push(event.detail);
@@ -203,7 +227,7 @@ describe('streamCSV', () => {
     const blob = new Blob([csv], { type: 'text/csv' });
     const rows: CSVRowEvent[] = [];
 
-    const stream = streamCSV(blob, { hasHeaders: true });
+    const stream = streamCSV(blob);
 
     stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
       rows.push(event.detail);
@@ -224,7 +248,7 @@ describe('streamCSV', () => {
     const response = new Response(csv);
     const rows: CSVRowEvent[] = [];
 
-    const stream = streamCSV(response, { hasHeaders: true });
+    const stream = streamCSV(response);
 
     stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
       rows.push(event.detail);
@@ -242,7 +266,7 @@ describe('streamCSV', () => {
 
   test('exposes headers property', async () => {
     const csv = 'name,age\nAlice,30';
-    const stream = streamCSV(csv, { hasHeaders: true });
+    const stream = streamCSV(csv);
 
     // Consume the stream to ensure headers are parsed
     const reader = stream.readable.getReader();
@@ -257,7 +281,7 @@ describe('streamCSV', () => {
   test('auto-detects total bytes from Blob', async () => {
     const csv = 'name,age\nAlice,30';
     const blob = new Blob([csv], { type: 'text/csv' });
-    const stream = streamCSV(blob, { hasHeaders: true });
+    const stream = streamCSV(blob);
 
     expect(stream.totalBytes).toBe(blob.size);
 
@@ -271,7 +295,7 @@ describe('streamCSV', () => {
 
   test('tracks bytes processed', async () => {
     const csv = 'name,age\nAlice,30';
-    const stream = streamCSV(csv, { hasHeaders: true });
+    const stream = streamCSV(csv);
 
     // Consume stream
     const reader = stream.readable.getReader();
@@ -287,7 +311,7 @@ describe('streamCSV', () => {
 describe('multiline quoted fields', () => {
   test('parses field with embedded newline', async () => {
     const csv = 'name,address\nAlice,"123 Main St\nApt 4"';
-    const stream = streamCSV(csv, { hasHeaders: true });
+    const stream = streamCSV(csv);
     const rows: CSVRowEvent[] = [];
 
     stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
@@ -309,7 +333,7 @@ describe('multiline quoted fields', () => {
 
   test('parses multiple rows with multiline fields', async () => {
     const csv = 'name,note\nAlice,"Line 1\nLine 2"\nBob,"Single line"';
-    const stream = streamCSV(csv, { hasHeaders: true });
+    const stream = streamCSV(csv);
     const rows: CSVRowEvent[] = [];
 
     stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
@@ -329,7 +353,7 @@ describe('multiline quoted fields', () => {
 
   test('handles multiline field with quotes inside', async () => {
     const csv = 'name,bio\nAlice,"She said ""hello""\nand left"';
-    const stream = streamCSV(csv, { hasHeaders: true });
+    const stream = streamCSV(csv);
     const rows: CSVRowEvent[] = [];
 
     stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
@@ -351,7 +375,7 @@ describe('multiline quoted fields', () => {
 
   test('handles multiline field split across chunks', async () => {
     const rows: CSVRowEvent[] = [];
-    const stream = new CSVStream({ hasHeaders: true });
+    const stream = new CSVStream();
 
     stream.on('csvrow', (event: CustomEvent<CSVRowEvent>) => {
       rows.push(event.detail);
@@ -393,7 +417,7 @@ describe('progress events', () => {
     const csv = [headerRow, ...dataRows].join('\n');
 
     const progressEvents: CSVProgressEvent[] = [];
-    const stream = streamCSV(csv, { hasHeaders: true, progressInterval: 1000 });
+    const stream = streamCSV(csv, { progressInterval: 1000 });
 
     stream.on('progress', (event: CustomEvent<CSVProgressEvent>) => {
       progressEvents.push(event.detail);
@@ -418,7 +442,7 @@ describe('progress events', () => {
     const csv = [headerRow, ...dataRows].join('\n');
 
     const progressEvents: CSVProgressEvent[] = [];
-    const stream = streamCSV(csv, { hasHeaders: true, progressInterval: 10 });
+    const stream = streamCSV(csv, { progressInterval: 10 });
 
     stream.on('progress', (event: CustomEvent<CSVProgressEvent>) => {
       progressEvents.push(event.detail);
@@ -442,7 +466,7 @@ describe('progress events', () => {
     const csv = [headerRow, ...dataRows].join('\n');
 
     const progressEvents: CSVProgressEvent[] = [];
-    const stream = streamCSV(csv, { hasHeaders: true, progressInterval: 0 });
+    const stream = streamCSV(csv, { progressInterval: 0 });
 
     stream.on('progress', (event: CustomEvent<CSVProgressEvent>) => {
       progressEvents.push(event.detail);

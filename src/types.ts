@@ -4,9 +4,16 @@
 export interface CSVStreamOptions {
   /** Field delimiter character. Defaults to ',' */
   delimiter?: string;
-  /** If true, treats the first row as headers and emits rows as objects. */
-  hasHeaders?: boolean;
-  /** Predefined headers to use. If provided, first row is treated as data. */
+  /**
+   * Whether to expect a header row in the CSV.
+   * - true + no headers: first row becomes keys for subsequent rows
+   * - true + headers provided: validates first row matches, emits error if not
+   * - false + no headers: uses "1", "2", "3"... as keys
+   * - false + headers provided: applies headers to all rows (first row is data)
+   * Defaults to true.
+   */
+  expectHeaders?: boolean;
+  /** Predefined headers to use or validate against. */
   headers?: string[];
   /** AbortSignal to cancel streaming. */
   signal?: AbortSignal;
@@ -17,9 +24,10 @@ export interface CSVStreamOptions {
 }
 
 /**
- * A parsed CSV row, either as an array of strings or a record (if headers are defined).
+ * A parsed CSV row as a record with string keys and values.
+ * Keys are header names, or "1", "2", "3"... if no headers.
  */
-export type CSVRow = string[] | Record<string, string>;
+export type CSVRow = Record<string, string>;
 
 /**
  * Event data emitted for each parsed CSV row.
@@ -101,90 +109,6 @@ export type ParseResult =
  * Supported input types for streamCSV().
  */
 export type CSVInput = string | Blob | Response | ReadableStream<string>;
-
-/**
- * Options for the validate() convenience function.
- */
-export interface ValidateOptions extends CSVStreamOptions {
-  /** Required headers that must be present in the CSV. */
-  requiredHeaders?: string[];
-  /** Maximum number of invalid rows to collect before stopping. */
-  maxInvalidRows?: number;
-}
-
-/**
- * Data passed to the validate row callback.
- */
-export interface ValidateRowData {
-  /** 1-based row number. */
-  rowNum: number;
-  /** Parsed fields. */
-  fields: CSVRow;
-  /** Raw line string. */
-  raw: string;
-}
-
-/**
- * Represents a validation error for a specific row.
- */
-export interface InvalidRow {
-  /** 1-based row number. */
-  rowNum: number;
-  /** Fields that failed validation. */
-  errors: string[];
-  /** The raw line content. */
-  raw: string;
-}
-
-/**
- * Fatal error that stops validation.
- */
-export interface FatalError {
-  /** Error type identifier. */
-  type: string;
-  /** Human-readable error message. */
-  message: string;
-  /** 1-based line number where error occurred. */
-  lineNum: number;
-}
-
-/**
- * Result returned by the validate() function.
- */
-export interface ValidateResult {
-  /** True if validation passed with no errors. */
-  valid: boolean;
-  /** Total number of data rows processed. */
-  rowCount: number;
-  /** Number of invalid rows found. */
-  invalidRowCount: number;
-  /** Collection of invalid rows (up to maxInvalidRows). */
-  invalidRows: InvalidRow[];
-  /** Fatal error that stopped processing, if any. */
-  fatalError?: FatalError;
-  /** True if validation was canceled via AbortSignal. */
-  canceled?: boolean;
-}
-
-/**
- * Callback for validating each row. Return an array of error strings, or empty array if valid.
- */
-export type ValidateRowCallback = (data: ValidateRowData) => string[] | undefined;
-
-/**
- * Progress callback for validation.
- */
-export interface ValidateProgress {
-  rowCount: number;
-  invalidRowCount: number;
-  lineNum: number;
-  /** Bytes processed so far (if available) */
-  bytesProcessed?: number;
-  /** Total bytes (if known, e.g., from file size) */
-  totalBytes?: number;
-}
-
-export type ValidateProgressCallback = (progress: ValidateProgress) => void;
 
 /**
  * Progress event data emitted during streaming.
