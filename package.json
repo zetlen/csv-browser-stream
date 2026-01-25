@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "In-browser streaming CSV parser and validator",
   "type": "module",
-  "main": "./dist/cjs/index.cjs",
+  "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -13,13 +13,15 @@
         "default": "./dist/index.js"
       },
       "require": {
-        "types": "./dist/cjs/index.d.cts",
-        "default": "./dist/cjs/index.cjs"
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.cjs"
       }
     }
   },
   "files": [
-    "dist"
+    "dist/index.js",
+    "dist/index.cjs",
+    "dist/index.d.ts"
   ],
   "scripts": {
     "build": "bun scripts/build.ts",
