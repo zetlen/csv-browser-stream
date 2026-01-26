@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { collect, CollectAbortError, CSVStreamError, streamCSV } from '../src';
 import type { CSVRow } from '../src';
+import { CollectAbortError, CSVStreamError, collect, streamCSV } from '../src';
 
 describe('collect', () => {
   test('accumulates rows with reducer pattern', async () => {

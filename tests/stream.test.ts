@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { CSVStream, streamCSV } from '../src/stream.ts';
-import type { CSVEndEvent, CSVErrorEvent, CSVHeadersEvent, CSVProgressEvent, CSVRowEvent } from '../src/types.ts';
+import type {
+  CSVEndEvent,
+  CSVErrorEvent,
+  CSVHeadersEvent,
+  CSVProgressEvent,
+  CSVRowEvent,
+} from '../src/types.ts';
 
 // Helper to pipe string content through CSVStream and collect results
 async function processCSV(
@@ -76,7 +82,10 @@ describe('CSVStream', () => {
 
   test('applies predefined headers to all rows (expectHeaders: false)', async () => {
     const csv = 'Alice,30\nBob,25';
-    const { rows } = await processCSV(csv, { expectHeaders: false, headers: ['firstName', 'yearsOld'] });
+    const { rows } = await processCSV(csv, {
+      expectHeaders: false,
+      headers: ['firstName', 'yearsOld'],
+    });
 
     expect(rows).toHaveLength(2);
     expect(rows[0]!.fields).toEqual({ firstName: 'Alice', yearsOld: '30' });
@@ -85,7 +94,10 @@ describe('CSVStream', () => {
 
   test('validates headers when expectHeaders: true and headers provided', async () => {
     const csv = 'name,age\nAlice,30';
-    const { rows, errors } = await processCSV(csv, { expectHeaders: true, headers: ['name', 'age'] });
+    const { rows, errors } = await processCSV(csv, {
+      expectHeaders: true,
+      headers: ['name', 'age'],
+    });
 
     expect(errors).toHaveLength(0);
     expect(rows).toHaveLength(1);
@@ -94,7 +106,10 @@ describe('CSVStream', () => {
 
   test('emits error on header mismatch when validating', async () => {
     const csv = 'name,age\nAlice,30';
-    const { rows, errors } = await processCSV(csv, { expectHeaders: true, headers: ['firstName', 'lastName'] });
+    const { rows, errors } = await processCSV(csv, {
+      expectHeaders: true,
+      headers: ['firstName', 'lastName'],
+    });
 
     expect(errors).toHaveLength(1);
     expect(errors[0]!.message).toContain('Header mismatch');

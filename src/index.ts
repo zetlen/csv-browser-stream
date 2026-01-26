@@ -1,6 +1,6 @@
 // Main entry point for csv-browser-stream
 
-export { collect, CollectAbortError, CSVStreamError } from './collect.ts';
+export { CollectAbortError, CSVStreamError, collect } from './collect.ts';
 export { CSVStream, streamCSV } from './stream.ts';
 export type {
   CSVInput,
