@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.2.0...csv-browser-stream-v1.2.1) (2026-01-26)
+
+
+### Bug Fixes
+
+* add TextDecoderStream fallback for WebKit compatibility ([#11](https://github.com/zetlen/csv-browser-stream/issues/11)) ([7ab0b4f](https://github.com/zetlen/csv-browser-stream/commit/7ab0b4f6595889fc8b9969d7a16144f3a7fdf115))
+
 ## [1.2.0](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.1.4...csv-browser-stream-v1.2.0) (2026-01-25)
 
 
