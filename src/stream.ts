@@ -29,7 +29,9 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
   private _buffer = '';
   private _bytesProcessed = 0;
   private _lastProgressRow = 0;
-  private _options: Required<Pick<CSVStreamOptions, 'delimiter' | 'expectHeaders' | 'progressInterval' | 'strictColumns'>> &
+  private _options: Required<
+    Pick<CSVStreamOptions, 'delimiter' | 'expectHeaders' | 'progressInterval' | 'strictColumns'>
+  > &
     CSVStreamOptions;
   private _aborted = false;
   private _headersValidated = false;
@@ -170,7 +172,10 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
     this._buffer = this._buffer.slice(lineStart);
   }
 
-  private _processLine(rawLine: string, controller: TransformStreamDefaultController<CSVRow>): void {
+  private _processLine(
+    rawLine: string,
+    controller: TransformStreamDefaultController<CSVRow>,
+  ): void {
     this._lineNum += 1;
     const line = rawLine.replace(/\r$/, '');
 
@@ -200,7 +205,8 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
         // Validate that first row matches expected headers
         const expected = this._options.headers.map(normalizeHeader);
         const matches =
-          expected.length === parsedHeaders.length && expected.every((h, i) => h === parsedHeaders[i]);
+          expected.length === parsedHeaders.length &&
+          expected.every((h, i) => h === parsedHeaders[i]);
 
         if (!matches) {
           this._hasError = true;
@@ -270,6 +276,30 @@ export class CSVStream extends EventTarget implements TransformStream<string, CS
   }
 }
 
+/**
+ * Creates a TextDecoderStream-compatible TransformStream.
+ * Used as a fallback for environments where TextDecoderStream is not available.
+ */
+function createTextDecoderStream(): TransformStream<Uint8Array, string> {
+  const decoder = new TextDecoder();
+  return new TransformStream<Uint8Array, string>({
+    transform(chunk, controller) {
+      controller.enqueue(decoder.decode(chunk, { stream: true }));
+    },
+    flush(controller) {
+      const final = decoder.decode();
+      if (final) controller.enqueue(final);
+    },
+  });
+}
+
+function getTextDecoderStream(): TransformStream<BufferSource, string> {
+  if (typeof TextDecoderStream !== 'undefined') {
+    return new TextDecoderStream();
+  }
+  return createTextDecoderStream() as TransformStream<BufferSource, string>;
+}
+
 function toTextStream(input: CSVInput): ReadableStream<string> {
   if (typeof input === 'string') {
     return new ReadableStream<string>({
@@ -281,12 +311,12 @@ function toTextStream(input: CSVInput): ReadableStream<string> {
   }
 
   if (input instanceof Blob) {
-    return input.stream().pipeThrough(new TextDecoderStream());
+    return input.stream().pipeThrough(getTextDecoderStream());
   }
 
   if (input instanceof Response) {
     if (!input.body) throw new Error('Response has no body');
-    return input.body.pipeThrough(new TextDecoderStream());
+    return input.body.pipeThrough(getTextDecoderStream());
   }
 
   // ReadableStream<string> - pass through directly
