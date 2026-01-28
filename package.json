@@ -1,6 +1,6 @@
 {
   "name": "csv-browser-stream",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "In-browser streaming CSV parser and validator",
   "repository": {
     "type": "git",
