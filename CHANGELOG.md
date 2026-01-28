@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.2.1...csv-browser-stream-v1.3.0) (2026-01-28)
+
+
+### Features
+
+* expose row metadata in collect() callback ([#14](https://github.com/zetlen/csv-browser-stream/issues/14)) ([963acd8](https://github.com/zetlen/csv-browser-stream/commit/963acd82169a0d348700844839778008e3593f85))
+
 ## [1.2.1](https://github.com/zetlen/csv-browser-stream/compare/csv-browser-stream-v1.2.0...csv-browser-stream-v1.2.1) (2026-01-26)
 
 
