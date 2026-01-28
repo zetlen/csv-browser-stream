@@ -35,7 +35,8 @@ export class CSVStreamError extends Error {
  * Collects rows from a CSVStream using a reducer-like pattern.
  *
  * @param stream - A CSVStream to collect rows from
- * @param callback - Reducer function receiving (accumulated, row) and returning the new accumulated value
+ * @param callback - Reducer function receiving (accumulated, fields, event) and returning the new accumulated value.
+ *   The third `event` parameter provides row metadata including rowNum, fieldsArray, columnCount, and raw line.
  * @param initialValue - The initial value for the accumulator
  * @returns Promise resolving to the final accumulated value
  *
@@ -54,10 +55,21 @@ export class CSVStreamError extends Error {
  *   return rows;
  * }, []);
  * ```
+ *
+ * @example
+ * ```ts
+ * // Access row metadata for validation
+ * const errors = await collect(stream, (errs, fields, event) => {
+ *   if (event.columnCount !== 3) {
+ *     errs.push(`Row ${event.rowNum}: expected 3 columns, got ${event.columnCount}`);
+ *   }
+ *   return errs;
+ * }, []);
+ * ```
  */
 export async function collect<T>(
   stream: CSVStream,
-  callback: (accumulated: T, row: CSVRow) => T,
+  callback: (accumulated: T, fields: CSVRow, event: CSVRowEvent) => T,
   initialValue: T,
 ): Promise<T> {
   let accumulated = initialValue;
@@ -67,7 +79,7 @@ export async function collect<T>(
   stream.on('csvrow', (e: CustomEvent<CSVRowEvent>) => {
     if (userError || streamError) return;
     try {
-      accumulated = callback(accumulated, e.detail.fields);
+      accumulated = callback(accumulated, e.detail.fields, e.detail);
     } catch (err) {
       userError = err;
     }

@@ -257,6 +257,62 @@ test.describe('collect', () => {
 
     expect(result).toHaveLength(2);
   });
+
+  test('provides row metadata via event parameter', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const { streamCSV, collect } = (window as any).csvBrowserStream;
+      const stream = streamCSV('name,value\nAlice,100\nBob,200');
+      return await collect(
+        stream,
+        (arr: any[], _fields: any, event: any) => {
+          arr.push({
+            rowNum: event.rowNum,
+            columnCount: event.columnCount,
+            fieldsArray: event.fieldsArray,
+            raw: event.raw,
+          });
+          return arr;
+        },
+        [],
+      );
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({
+      rowNum: 1,
+      columnCount: 2,
+      fieldsArray: ['Alice', '100'],
+      raw: 'Alice,100',
+    });
+    expect(result[1]).toEqual({
+      rowNum: 2,
+      columnCount: 2,
+      fieldsArray: ['Bob', '200'],
+      raw: 'Bob,200',
+    });
+  });
+
+  test('event parameter enables column count validation', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const { streamCSV, collect } = (window as any).csvBrowserStream;
+      const stream = streamCSV('a,b,c\n1,2,3\n4,5\n6,7,8,9');
+      return await collect(
+        stream,
+        (errs: string[], _fields: any, event: any) => {
+          if (event.columnCount !== 3) {
+            errs.push(`Row ${event.rowNum}: expected 3 columns, got ${event.columnCount}`);
+          }
+          return errs;
+        },
+        [],
+      );
+    });
+
+    expect(result).toEqual([
+      'Row 2: expected 3 columns, got 2',
+      'Row 3: expected 3 columns, got 4',
+    ]);
+  });
 });
 
 test.describe('toCSV and downloadCSV', () => {
